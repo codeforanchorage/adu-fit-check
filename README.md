@@ -33,6 +33,9 @@ It never requests or shows owner names or mailing addresses.
 | `data.js` | ArcGIS REST queries and clipping buildings to the lot |
 | `sun.js` | Sun position and shadow length (pure functions) |
 | `view3d.js` | The 3D block view (three.js), loaded on demand |
+| `config.js` | Where the page finds the survey reader. Holds a public quota key, never a secret |
+| `lambda/` | The survey reader: one Python function that asks Claude to trace an uploaded survey |
+| `terraform/aws/` | The AWS resources for the survey reader |
 | `plans.json` | The pre-approved ADU plans: name, designer, footprint, floor area, and where each number comes from |
 | `tests/` | Vitest unit tests, and `live-check.mjs` for checking an address from the command line |
 | `build_deploy.py` | Builds the upload folder for DreamHost |
@@ -63,6 +66,23 @@ Upload the contents of `deploy_dreamhost/` to `experiments/adu-fit/`, then:
 python build_deploy.py --verify   # compares the live files with the build
 ```
 
+## The survey reader (Phase 4)
+
+"Read survey with AI" posts the uploaded survey image to a small AWS Lambda behind API Gateway (`lambda/handler.py`, `terraform/aws/`), which asks Claude for a first tracing. The person must check it and press "This tracing looks right" before any result is shown.
+
+- **Spend is capped four ways:** an API Gateway usage plan with a daily quota (the page's key attaches it), reserved concurrency of 2, a throttle of one request a second, and a spend limit set on the Anthropic workspace that owns the model key.
+- **The model key** is an encrypted SSM parameter, `/adu-fit-check/anthropic-api-key`, created by hand. It is not in this repository, the Lambda package or the Terraform state.
+- **Nothing is stored.** The image is held for one request. The log line has timing, token counts and how many shapes came back, never the image or the tracing.
+- **To switch it off:** `aws lambda put-function-concurrency --function-name adu-fit-check-survey-prod --reserved-concurrent-executions 0`, or empty `url` in `config.js`.
+
+```
+python -m unittest discover -s lambda -p "test_*.py"   # no network, no key
+scripts/deploy_survey.sh                               # build the zip and show the Terraform plan
+scripts/deploy_survey.sh --apply                       # apply the plan just shown
+```
+
+After the first deploy, put the two Terraform outputs into `config.js` and deploy the page.
+
 ## Who the page is written for
 
 The page is written for residents first: plain words, a clear "could fit" or "does not fit", and the Municipality's next steps. The measurements, code sections, data sources and open questions are kept for builders and permitting staff in notes that open on request ("for builders and reviewers") and in the last section on the right. When adding a feature, put the plain-language result in view and the detail in a note.
@@ -89,7 +109,7 @@ The plans are in `plans.json`, read from www.muni.org/ADU on 2026-11-24. The Mun
 - The projection (NAD83 Alaska State Plane Zone 4, feet) has not yet been confirmed with MOA GIS.
 - The aerial photo is the 2024 one. A 2026 photo service (`Photo_2026_Temp`) answers without a login but had no public catalog item on 2026-11-24, so it is left out until MOA GIS confirms it is meant to be public. The line to add it back is in a comment above `AERIALS` in `data.js`.
 - Aerial photos are for orientation. Mapped lot lines can sit a few feet off the photo.
-- "Read survey with AI" only appears inside claude.ai. A stand-alone version is Phase 4 of the work order.
+- "Read survey with AI" appears only when `config.js` names a survey reader and a survey has been uploaded. Its accuracy has not been measured yet: that needs the 20 redacted as-builts from Development Services.
 
 ## Licence
 

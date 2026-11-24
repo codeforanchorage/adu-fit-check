@@ -153,6 +153,7 @@ details.tools .bar{margin-top:6px}
         </div>
       </details>
       <div class="guide" id="guide"></div>
+      <div><button id="aiOk" type="button" class="primary" hidden>This tracing looks right</button></div>
       <div class="inline" id="scaleBox">
         <span>Distance between the two points</span>
         <input type="number" id="scaleFt" min="1" step="0.01" style="width:100px" aria-label="Distance in feet"> <span>ft</span>
@@ -331,7 +332,7 @@ details.tools .bar{margin-top:6px}
         </details>
         <details>
           <summary>Where the map data comes from</summary>
-          <p class="small">All from the Municipality of Anchorage's public map services, read by your browser. Lot lines, address and zoning district: the assessor's property layer (owner names are never requested). Buildings and their heights: the Buildings layer. Front lot lines and alleys: street and alley centrelines. Seismic zones, FEMA flood areas and AWWU service records fill the extra-steps boxes. Aerial photos are the Municipality's 2024 photo. Coordinates are NAD 1983 State Plane Alaska Zone 4, in feet. Nothing you type is stored by this page.</p>
+          <p class="small">All from the Municipality of Anchorage's public map services, read by your browser. Lot lines, address and zoning district: the assessor's property layer (owner names are never requested). Buildings and their heights: the Buildings layer. Front lot lines and alleys: street and alley centrelines. Seismic zones, FEMA flood areas and AWWU service records fill the extra-steps boxes. Aerial photos are the Municipality's 2024 photo. Coordinates are NAD 1983 State Plane Alaska Zone 4, in feet. Nothing you type is stored by this page. If you press "Read survey with AI", the survey image is sent to a small service run for this page, which passes it to Anthropic's Claude model to read. That service does not store the image or log what is in it; Anthropic handles it under its own data policy.</p>
         </details>
         <details>
           <summary>Not yet confirmed with Municipality staff</summary>

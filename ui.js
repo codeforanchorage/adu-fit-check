@@ -6,6 +6,7 @@
 
 import {area,inside,ptSeg,cen,rectPoly,clean,openRing,classifyEdges,sweep,f1} from "./geometry.js";
 import {sunPosition,zonedToUtc,todayIn,shadowOffset,compass} from "./sun.js";
+import {SURVEY_READER} from "./config.js";
 import {DIST,TYPES,TNAME,L,check,margin,maxAduArea,autoTypes,typesFromEdges,normZone,flagResults} from "./rules.js";
 
 const $=id=>document.getElementById(id);
@@ -22,7 +23,7 @@ function gridPts(){const xs=S.lot.map(p=>p.x),ys=S.lot.map(p=>p.y),x0=Math.min(.
   for(let y=y0+st/2;y<y1;y+=st)for(let x=x0+st/2;x<x1;x+=st)if(inside({x,y},S.lot))pts.push({x,y});return {pts,st}}
 function globalOk(R){const g=check(S,aduPoly(S.adu.x,S.adu.y),R,false);return !g.rows.slice(-2).some(r=>!r.ok)}
 function buildMap(){
-  S.mapDirty=false;S.map=null;if(!ready())return;
+  S.mapDirty=false;S.map=null;if(!ready()||S.unconfirmed)return;
   const R=rules(),g=gridPts(),gl=globalOk(R);
   S.map={cells:g.pts.map(p=>({x:p.x,y:p.y,ok:gl&&check(S,aduPoly(p.x,p.y),R,true).ok})),st:g.st};
 }
@@ -94,7 +95,7 @@ function draw(){
     cx.beginPath();cx.moveTo(X(a),Y(a));cx.lineTo(X(b),Y(b));cx.strokeStyle=c;cx.lineWidth=o.ok?1.2:2.2;cx.setLineDash(o.ok?[5,4]:[]);cx.stroke();cx.setLineDash([]);
     const t=o.m,mx=(X(a)+X(b))/2,my=(Y(a)+Y(b))/2;cx.font="600 11px 'IBM Plex Mono',monospace";const w=cx.measureText(t).width+8;cx.fillStyle="#fff";cx.fillRect(mx-w/2,my-8,w,16);cx.strokeStyle=c;cx.lineWidth=1;cx.strokeRect(mx-w/2,my-8,w,16);cx.fillStyle=c;cx.textAlign="center";cx.textBaseline="middle";cx.fillText(t,mx,my+0.5)});
   // ADU
-  if(ready()&&S.mode==="place"){const p=aduPoly(S.adu.x,S.adu.y),r=S.result;const ok=r&&r.ok;
+  if(ready()&&S.mode==="place"&&!S.unconfirmed){const p=aduPoly(S.adu.x,S.adu.y),r=S.result;const ok=r&&r.ok;
     path(p,true);cx.fillStyle=ok?"rgba(23,140,80,.55)":"rgba(200,45,35,.55)";cx.fill();cx.strokeStyle=ok?"#0e5a35":"#8c1c16";cx.lineWidth=2.5;cx.stroke();
     cx.fillStyle="#fff";cx.font="600 13px 'IBM Plex Sans',sans-serif";cx.textAlign="center";cx.textBaseline="middle";
     cx.fillText((S.adu.plan?S.adu.plan.name.replace(/^The /,""):"ADU")+" "+S.adu.w+" × "+S.adu.d,X(S.adu),Y(S.adu)-8);cx.fillText(ok?"Fits":"Does not fit",X(S.adu),Y(S.adu)+9)}
@@ -108,6 +109,9 @@ function update(){
   const needFits=S.mapDirty;
   const st=$("status"),tx=$("statusText"),why=$("why"),tb=$("checks").tBodies[0];why.innerHTML="";tb.innerHTML="";
   const tag=$("fitTag"),hint=$("nextHint");
+  // an AI tracing is only a first guess: no result is shown until the person has checked it
+  if(S.unconfirmed&&ready()){S.result=null;st.className="status idle";tx.textContent="Check the tracing first";tag.className="tag";tag.textContent="";
+    hint.textContent="Compare the tracing with your survey, fix anything that is off, then press \"This tracing looks right\".";draw();$("fits").innerHTML="";return}
   if(!ready()){S.result=null;st.className="status idle";tx.textContent=!S.ftPerPx?"Set the scale first (step 1).":"Trace the lot lines (step 2).";tag.className="tag";tag.textContent="";hint.textContent="";draw();$("fits").innerHTML="";return}
   const r=check(S,aduPoly(S.adu.x,S.adu.y),rules(),false);S.result=r;
   st.className="status "+(r.ok?"ok":"bad");tx.textContent=r.ok?"This ADU could fit here":"It does not fit at this spot";
@@ -214,13 +218,16 @@ $("copy").addEventListener("click",async()=>{const r=S.result;if(!r)return;
   setTimeout(()=>$("copied").textContent="",2500)});
 
 /* ---------- loading a survey ---------- */
-function setImage(c){S.img=c;S.iw=c.width;S.ih=c.height;S.ftPerPx=null;S.lot=[];S.lotClosed=false;S.types=[];S.bldgs=[];S.nb=[];S.draft=[];S.scalePts=[];S.bldgArea=null;S.info=null;S.site=null;clearFlagNotes();
+function setImage(c){S.uploaded=false;S.unconfirmed=false;$("aiOk").hidden=true;showAi();S.img=c;S.iw=c.width;S.ih=c.height;S.ftPerPx=null;S.lot=[];S.lotClosed=false;S.types=[];S.bldgs=[];S.nb=[];S.draft=[];S.scalePts=[];S.bldgArea=null;S.info=null;S.site=null;clearFlagNotes();
   S.view="drawing";$("viewBox").classList.remove("on");$("viewDrawing").setAttribute("aria-pressed","true");$("viewAerial").setAttribute("aria-pressed","false");$("viewMsg").textContent="";
   $("sunOn").checked=false;$("sunOn").disabled=true;sunUpdate();show3d(false);
   S.mapDirty=true;layout()}
 function toCanvas(src,w,h){const m=1600/Math.max(w,h),k=Math.min(1,m),c=document.createElement("canvas");c.width=Math.round(w*k);c.height=Math.round(h*k);c.getContext("2d").drawImage(src,0,0,c.width,c.height);return c}
 function loadScript(u){return new Promise((res,rej)=>{const s=document.createElement("script");s.src=u;s.onload=res;s.onerror=rej;document.head.appendChild(s)})}
 $("file").addEventListener("change",async e=>{const f=e.target.files[0];if(!f)return;e.target.value="";
+  // images and PDFs only, 10 MB at most. Nothing is uploaded here: the file is read in the browser.
+  if(f.size>10*1024*1024||!(/^image\//.test(f.type)||f.type==="application/pdf"||/\.(pdf|png|jpe?g|gif|webp|bmp)$/i.test(f.name))){
+    $("tools").open=true;$("guide").innerHTML="<b>That file cannot be used.</b> Choose a photo, a scan or a PDF of the survey, 10 MB or smaller.";return}
   try{
     if(f.type==="application/pdf"||/\.pdf$/i.test(f.name)){
       const base="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/";
@@ -231,19 +238,20 @@ $("file").addEventListener("change",async e=>{const f=e.target.files[0];if(!f)re
     }else{
       const url=URL.createObjectURL(f),im=new Image();await new Promise((res,rej)=>{im.onload=res;im.onerror=rej;im.src=url});setImage(toCanvas(im,im.naturalWidth,im.naturalHeight));URL.revokeObjectURL(url);
     }
-    setMode("scale");
+    S.uploaded=true;showAi();setMode("scale");
+    if(aiOn())$("guide").appendChild(document.createTextNode(" Or press \"Read survey with AI\" for a first tracing to check. That sends the survey image to an AI service to be read."));
   }catch(err){$("guide").innerHTML="<b>That file could not be read here.</b> Try a photo or screenshot of the survey (PNG or JPG).";}
 });
 
 /* ---------- AI reads the survey ---------- */
-let sampler=null;
-if(window.claude&&window.claude.use)window.claude.use("sample").then(async fn=>{if(!fn)return;try{const l=await fn.limits();if(l&&l.images){sampler=fn;$("ai").hidden=false}}catch(e){}}).catch(()=>{});
-const AI_PROMPT=`You are reading a residential as-built survey or plot plan for one lot. Find the lot boundary, existing buildings, areas that cannot be built on, and one printed dimension to set the scale.
-Use a coordinate system where x runs 0 to 1000 from the left edge of the image to the right edge, and y runs 0 to 1000 from the top edge to the bottom edge.
-Return only JSON, no prose, in this shape:
-{"lot":[[x,y],...],"front_edge":0,"alley_edges":[],"buildings":[{"label":"House","pts":[[x,y],...]}],"no_build":[{"label":"Utility easement","pts":[[x,y],...]}],"scale":{"p1":[x,y],"p2":[x,y],"feet":60.0},"zoning":"","notes":""}
-Rules: "lot" lists the lot corners in order around the boundary. Edge i runs from corner i to corner i+1. "front_edge" is the index of the edge along the street. "alley_edges" lists edges along an alley, if any. "buildings" are footprints of existing structures such as house, garage and sheds. "no_build" are easements, septic fields, wells and similar, with a short plain label. "scale" gives two points that are the ends of a line whose length in feet is printed on the drawing, preferably a lot line, and that length. "zoning" is the district if printed, otherwise empty. Put anything you were unsure of in "notes". Be as precise as you can with coordinates.`;
-function applyAI(o){if(typeof o==="string"){const a=o.indexOf("{"),b=o.lastIndexOf("}");o=JSON.parse(o.slice(a,b+1))}
+// "Read survey with AI" sends the survey image to the survey reader (lambda/handler.py),
+// which asks Claude for a first tracing. The prompt and the model key live on the server.
+// The tracing is never shown as a result until the person presses "This tracing looks right".
+// The button appears only when a reader is set in config.js and a survey has been uploaded.
+const aiOn=()=>!!SURVEY_READER.url;
+function showAi(){$("ai").hidden=!(aiOn()&&S.uploaded)}
+const AI_MAX_BYTES=1400000;   // the reader refuses more than 1.5 MB
+function applyAI(o){
   const P=q=>({x:Math.max(0,Math.min(1000,+q[0]))*S.iw/1000,y:Math.max(0,Math.min(1000,+q[1]))*S.ih/1000}),poly=a=>Array.isArray(a)&&a.length>=3&&a.every(q=>Array.isArray(q)&&isFinite(q[0])&&isFinite(q[1]))?a.map(P):null;
   const lot=poly(o.lot);if(!lot)throw new Error("no lot");
   S.lot=lot;S.lotClosed=true;S.draft=[];S.types=autoTypes(S.lot,o.front_edge);(o.alley_edges||[]).forEach(i=>{if(Number.isInteger(i)&&i>=0&&i<lot.length&&S.types[i]!=="front")S.types[i]="alley"});
@@ -252,13 +260,25 @@ function applyAI(o){if(typeof o==="string"){const a=o.indexOf("{"),b=o.lastIndex
   const sc=o.scale;let scaled=false;if(sc&&Array.isArray(sc.p1)&&Array.isArray(sc.p2)&&sc.feet>0){const a=P(sc.p1),b=P(sc.p2),d=Math.hypot(a.x-b.x,a.y-b.y);if(d>5){S.ftPerPx=sc.feet/d;scaled=true}}
   if(typeof o.zoning==="string"&&DIST[o.zoning.trim().toUpperCase()]){$("dist").value=o.zoning.trim().toUpperCase();$("dist").dispatchEvent(new Event("change"))}
   const c=cen(lot);S.adu.x=c.x;S.adu.y=c.y;S.mapDirty=true;
-  if(!scaled){setMode("scale");$("guide").innerHTML="<b>AI traced the lot but could not read a dimension.</b> Click the two ends of a line with a printed length, then type it."}
-  else{setMode("place");placeBest();
-    $("guide").innerHTML="<b>AI traced this survey. Check it before you rely on it.</b> Compare the blue lot lines, the numbered buildings and the orange areas with the drawing. Use steps 1 to 4 to fix anything that is off."+(o.notes?" AI note: ":"");
-    if(o.notes)$("guide").appendChild(document.createTextNode(String(o.notes).slice(0,300)))}}
-$("ai").addEventListener("click",async()=>{if(!sampler||!S.img)return;const btn=$("ai");btn.disabled=true;btn.textContent="Reading the survey…";
-  try{const blob=await new Promise(r=>S.img.toBlob(r,"image/jpeg",0.92));const out=await sampler.json(AI_PROMPT,{images:[blob],modelTier:"complex",cache:false});applyAI(out)}
-  catch(e){$("guide").innerHTML=e&&e.code==="rate_limited"?"<b>AI is busy right now.</b> Wait a minute and try again, or trace the survey by hand with steps 1 to 4.":"<b>AI could not read this survey.</b> Trace it by hand with steps 1 to 4."}
+  S.unconfirmed=true;$("aiOk").hidden=false;
+  if(!scaled){setMode("scale");$("guide").innerHTML="<b>The AI traced the lot but could not read a length.</b> Click the two ends of a line with a printed length, then type it. Then check the tracing and press \"This tracing looks right\"."}
+  else{setMode("place");
+    $("guide").innerHTML="<b>The AI made a first tracing. Check it before anything else.</b> Compare the blue lot lines, the numbered buildings and the orange areas with your survey. Fix anything that is off with steps 1 to 4, then press \"This tracing looks right\"."}
+  if(o.notes)$("guide").appendChild(document.createTextNode(" Note from the AI: "+String(o.notes).slice(0,300)))}
+$("aiOk").addEventListener("click",()=>{S.unconfirmed=false;$("aiOk").hidden=true;S.mapDirty=true;setMode("place");placeBest()});
+$("ai").addEventListener("click",async()=>{if(!aiOn()||!S.img||!S.uploaded)return;const btn=$("ai");btn.disabled=true;btn.textContent="Reading the survey… this can take half a minute";
+  const by="trace the survey by hand with steps 1 to 4.";
+  try{let blob=null;for(const q of [0.9,0.75,0.6]){blob=await new Promise(r=>S.img.toBlob(r,"image/jpeg",q));if(blob&&blob.size<=AI_MAX_BYTES)break}
+    if(!blob||blob.size>AI_MAX_BYTES)throw {code:"too_large"};
+    const b64=await new Promise((res,rej)=>{const fr=new FileReader();fr.onload=()=>res(String(fr.result).split(",")[1]);fr.onerror=rej;fr.readAsDataURL(blob)});
+    const r=await fetch(SURVEY_READER.url,{method:"POST",headers:{"content-type":"application/json","x-api-key":SURVEY_READER.key},body:JSON.stringify({image:b64})});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok)throw {code:d.error||(r.status===429?"limit":"failed")};
+    applyAI(d)}
+  catch(e){const c=e&&e.code;console.error(e);
+    $("guide").innerHTML=c==="limit"||c==="busy"?"<b>The AI reader has reached its limit for now.</b> Try again later, or "+by
+      :c==="slow"?"<b>Reading the survey took too long.</b> Try once more, or "+by
+      :"<b>The AI could not read this survey.</b> You can "+by}
   btn.disabled=false;btn.textContent="Read survey with AI"});
 
 /* ---------- address lookup from Municipality of Anchorage GIS (public ArcGIS REST, see data.js) ---------- */

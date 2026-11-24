@@ -1,0 +1,2 @@
+# Vendored into the Lambda zip by scripts/deploy_survey.sh. boto3 is already in the Lambda runtime.
+anthropic==2.13.0
