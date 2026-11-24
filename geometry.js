@@ -23,6 +23,12 @@ export function cen(p){return {x:p.reduce((s,q)=>s+q.x,0)/p.length,y:p.reduce((s
 export function rectPoly(adu,x,y,ftPerUnit){const k=1/ftPerUnit,hw=adu.w*k/2,hd=adu.d*k/2,r=adu.rot*Math.PI/180,c=Math.cos(r),s=Math.sin(r);
   return [[-hw,-hd],[hw,-hd],[hw,hd],[-hw,hd]].map(([u,w])=>({x:x+u*c-w*s,y:y+u*s+w*c}))}
 
+// The ground covered when a polygon slides by (dx, dy): the shadow of a flat-topped block
+// whose top edge is the polygon. Returned as a list of polygons whose union is that ground
+// (the polygon, the moved polygon, and one four-sided piece per edge), ready to be filled.
+export function sweep(p,dx,dy){const m=q=>({x:q.x+dx,y:q.y+dy}),out=[p,p.map(m)];
+  for(let i=0;i<p.length;i++){const a=p[i],b=p[(i+1)%p.length];out.push([a,b,m(b),m(a)])}return out}
+
 // Drop a repeated closing point. Changes nothing else.
 export function openRing(p){p=p.slice();if(p.length>1){const a=p[0],z=p[p.length-1];if(Math.hypot(a.x-z.x,a.y-z.y)<0.05)p.pop()}return p}
 

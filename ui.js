@@ -4,7 +4,8 @@
 // Results are screening only. Zoning staff make the determination. Keep that statement in
 // the page notice, on the drawn sheet and in the copied summary.
 
-import {area,inside,ptSeg,cen,rectPoly,clean,openRing,classifyEdges,f1} from "./geometry.js";
+import {area,inside,ptSeg,cen,rectPoly,clean,openRing,classifyEdges,sweep,f1} from "./geometry.js";
+import {sunPosition,zonedToUtc,todayIn,shadowOffset,compass} from "./sun.js";
 import {DIST,TYPES,TNAME,L,check,margin,maxAduArea,autoTypes,typesFromEdges,normZone,flagResults} from "./rules.js";
 
 const $=id=>document.getElementById(id);
@@ -55,6 +56,22 @@ function draw(){
   const A=S.view==="aerial"&&S.site&&S.site.aerial,bg=A||S.img;
   const stroke=(c,lw)=>{if(A){cx.strokeStyle="#fff";cx.lineWidth=lw+2.5;cx.stroke()}cx.strokeStyle=c;cx.lineWidth=lw;cx.stroke()};
   if(bg)cx.drawImage(bg,S.ox,0,S.iw*S.v,S.ih*S.v);
+  // shadows (see the shadows section below): nearby buildings as flat-topped blocks, and the ADU
+  if(shadowsOn()){
+    cx.save();cx.beginPath();cx.rect(S.ox,0,S.iw*S.v,S.ih*S.v);cx.clip();   // keep to the sheet
+    if(!A)S.site.around.forEach(b=>{path(b.pts,true);cx.fillStyle="rgba(90,110,135,.12)";cx.fill();cx.strokeStyle="#9aa7b5";cx.lineWidth=1;cx.stroke()});
+    const sun=sunNow();
+    if(sun&&sun.alt>=SUN_MIN_ALT){
+      // painted solid on a spare canvas and laid down once, so overlapping shadows do not darken
+      const sc=shadowCanvas||(shadowCanvas=document.createElement("canvas")),k=1/S.ftPerPx,dpr=cv.width/(cv.clientWidth||1);
+      sc.width=cv.width;sc.height=cv.height;const g=sc.getContext("2d");g.setTransform(dpr,0,0,dpr,0,0);g.fillStyle="#1b2430";
+      const cast=(p,ht)=>{const o=shadowOffset(ht,sun.alt,sun.az,SHADOW_MAX_FT);sweep(p,o.dx*k,o.dy*k).forEach(q=>{g.beginPath();q.forEach((pt,i)=>i?g.lineTo(X(pt),Y(pt)):g.moveTo(X(pt),Y(pt)));g.closePath();g.fill()})};
+      S.site.around.forEach(b=>{if(b.h)cast(b.pts,b.h)});
+      if(ready()&&S.mode==="place")cast(aduPoly(S.adu.x,S.adu.y),aduHeight());
+      cx.save();cx.setTransform(1,0,0,1,0,0);cx.globalAlpha=A?0.5:0.3;cx.drawImage(sc,0,0);cx.restore();
+    }
+    cx.restore();
+  }
   if(S.mapDirty)buildMap();
   if(S.map&&$("showMap").checked&&S.mode==="place"){const s=S.map.st*S.v;
     for(const c of S.map.cells){cx.fillStyle=c.ok?"rgba(23,140,80,.30)":A?"rgba(200,45,35,.13)":"rgba(200,45,35,.22)";cx.fillRect(X(c)-s/2,Y(c)-s/2,s+0.5,s+0.5)}}
@@ -148,7 +165,7 @@ $("scaleApply").addEventListener("click",()=>{const ft=parseFloat($("scaleFt").v
 /* ---------- controls ---------- */
 function design(){const p=PLANS.find(p=>p.id===$("design").value)||null;if(p){$("aw").value=p.w;$("ad").value=p.d}
   S.adu.w=Math.max(8,Math.min(60,parseFloat($("aw").value)||20));S.adu.d=Math.max(8,Math.min(60,parseFloat($("ad").value)||30));
-  S.adu.plan=p;S.adu.floorArea=p?p.floorArea:null;planNote(p);S.mapDirty=true;update()}
+  S.adu.plan=p;S.adu.floorArea=p?p.floorArea:null;planNote(p);if(p&&p.heightGuess>0)$("aduH").value=p.heightGuess;S.mapDirty=true;update();sunUpdate()}
 // What the page says about the chosen plan, and where its numbers come from.
 function planNote(p){const el=$("planNote");el.textContent="";if(!p)return;
   el.appendChild(document.createTextNode(p.kind+". Designed by "+p.designer+". Floor area "+p.floorArea.toLocaleString()+" sq ft on the Municipality's plan sheet"+(p.overGarage?", not counting the garage":"")+". "
@@ -187,6 +204,7 @@ $("copy").addEventListener("click",async()=>{const r=S.result;if(!r)return;
 /* ---------- loading a survey ---------- */
 function setImage(c){S.img=c;S.iw=c.width;S.ih=c.height;S.ftPerPx=null;S.lot=[];S.lotClosed=false;S.types=[];S.bldgs=[];S.nb=[];S.draft=[];S.scalePts=[];S.bldgArea=null;S.info=null;S.site=null;clearFlagNotes();
   S.view="drawing";$("viewBox").classList.remove("on");$("viewDrawing").setAttribute("aria-pressed","true");$("viewAerial").setAttribute("aria-pressed","false");$("viewMsg").textContent="";
+  $("sunOn").checked=false;$("sunOn").disabled=true;sunUpdate();
   S.mapDirty=true;layout()}
 function toCanvas(src,w,h){const m=1600/Math.max(w,h),k=Math.min(1,m),c=document.createElement("canvas");c.width=Math.round(w*k);c.height=Math.round(h*k);c.getContext("2d").drawImage(src,0,0,c.width,c.height);return c}
 function loadScript(u){return new Promise((res,rej)=>{const s=document.createElement("script");s.src=u;s.onload=res;s.onerror=rej;document.head.appendChild(s)})}
@@ -262,6 +280,40 @@ function paintSheet(info,lotA,fr,photo,m){
   return c;
 }
 
+/* ---------- shadows ---------- */
+// An aid for thinking and discussion, never a pass or fail check: no shadow rule is applied.
+// Only after an address lookup, because an uploaded survey has no known north or location.
+// Flat ground, every building a flat-topped block at its mapped height, no trees or fences.
+const TZ="America/Anchorage",SHADOW_MAX_FT=600,SUN_MIN_ALT=1;
+const MONTH=["January","February","March","April","May","June","July","August","September","October","November","December"];
+let shadowCanvas=null;
+const clock=m=>{const h=Math.floor(m/60),mm=String(m%60).padStart(2,"0");return (h%12||12)+":"+mm+(h<12?" am":" pm")};
+function aduHeight(){return Math.max(6,Math.min(60,parseFloat($("aduH").value)||15))}
+function shadowsOn(){return !!(S.site&&S.site.around&&$("sunOn").checked)}
+// The sun for the chosen date and clock time at this lot. The middle of Anchorage stands in
+// when the lot's own latitude and longitude did not load; across the Municipality that
+// moves the sun by well under one degree.
+function sunNow(){const [y,mo,d]=$("sunDate").value.split("-").map(Number);if(!y||!mo||!d)return null;
+  const c=(S.site&&S.site.center)||{lat:61.19,lon:-149.9};
+  return {...sunPosition(zonedToUtc(y,mo,d,+$("sunTime").value,TZ),c.lat,c.lon),mo,d}}
+// The same thing the drawing shows, in words.
+function sunText(){const s=S.site;
+  if(!s)return "Shadows are available after an address lookup. An uploaded survey has no known north or location.";
+  if(!s.around)return "The buildings around this lot could not be loaded, so shadows are not available for it.";
+  if(!$("sunOn").checked)return "";
+  const sun=sunNow();if(!sun)return "Pick a date.";
+  const when=clock(+$("sunTime").value)+" Alaska time on "+sun.d+" "+MONTH[sun.mo-1];
+  if(sun.alt<=0)return "At "+when+" the sun is below the horizon.";
+  if(sun.alt<SUN_MIN_ALT)return "At "+when+" the sun is on the horizon, too low to draw shadows.";
+  const ht=aduHeight(),o=shadowOffset(ht,sun.alt,sun.az),miss=s.around.filter(b=>!b.h).length;
+  return "At "+when+" the sun is "+f1(sun.alt)+"° above the horizon, to the "+compass(sun.az)+". A "+ht+" ft tall ADU casts a shadow about "+Math.round(o.len).toLocaleString()+" ft long, toward the "+compass(sun.az+180)+"."
+    +(o.len>SHADOW_MAX_FT?" Shadows are drawn no longer than "+SHADOW_MAX_FT+" ft.":"")
+    +(miss?" "+miss+" of the "+s.around.length+" buildings within 300 ft have no mapped height, so they cast no shadow here.":"")}
+function sunUpdate(){$("sunTimeV").textContent=clock(+$("sunTime").value);$("sunMsg").textContent=sunText();draw()}
+$("sunDate").value=todayIn(TZ);
+["sunOn","sunDate","sunTime","aduH"].forEach(id=>$(id).addEventListener("input",sunUpdate));
+document.querySelectorAll("[data-sunday]").forEach(b=>b.addEventListener("click",()=>{const t=todayIn(TZ);$("sunDate").value=b.dataset.sunday==="today"?t:t.slice(0,4)+"-"+b.dataset.sunday;sunUpdate()}));
+
 /* ---------- aerial photo under the drawing ---------- */
 // The Municipality's own aerial photos (data.js AERIALS), asked for only when "Aerial photo"
 // is pressed. No Google imagery is drawn here: its terms do not allow it. The street view
@@ -297,7 +349,8 @@ function sceneFromGIS(info,site){
   setImage(c);S.ftPerPx=1/k;S.lot=lot.map(px);S.lotClosed=true;S.info=info;
   S.bldgs=site.bldgs.map(b=>openRing(b.pts).map(px));
   S.bldgArea=site.bldgArea;   // clipped to the lot, holes taken out, in sq ft
-  S.site={edges,lotA,frame};
+  S.site={edges,lotA,frame,center:site.center||null,around:site.around?site.around.map(b=>({pts:openRing(b.pts).map(px),h:b.h})):null};
+  $("sunOn").disabled=!S.site.around;
   $("viewBox").classList.add("on");
   $("street").href=site.center?"https://www.google.com/maps/@?api=1&map_action=pano&viewpoint="+site.center.lat.toFixed(6)+","+site.center.lon.toFixed(6)
     :"https://www.google.com/maps/search/?api=1&query="+encodeURIComponent((info.addr||"")+", Anchorage, AK");
@@ -307,6 +360,7 @@ function sceneFromGIS(info,site){
   const b=bestSpot();if(b){S.adu.x=b.x;S.adu.y=b.y;S.adu.rot=b.rot;$("rot").value=b.rot;$("rotv").textContent=b.rot+"°";update()}
   const gd=$("guide");gd.innerHTML="<b>Loaded from Muni GIS. Check the lot line labels.</b> ";
   gd.appendChild(document.createTextNode(frontageNote()+" To change a label, open step 2 and click it. Building outlines are the Municipality's mapped footprints, cut off at the lot line; they may not show recent construction."+(DIST[z]?"":" Zoning district "+(info.zone||"(blank)")+" is not in the list, so set the setbacks by hand.")));
+  sunUpdate();
 }
 // Fill the "other reviews" boxes from map layers (data.js loadFlags, rules.js flagResults).
 // Every box stays editable. A lookup that cannot tell leaves the box alone and says so.
@@ -367,6 +421,8 @@ function sample(){
   S.bldgs=[[{x:260,y:592},{x:500,y:592},{x:500,y:760},{x:260,y:760}],[{x:230,y:400},{x:350,y:400},{x:350,y:532},{x:230,y:532}]];
   S.nb=[{label:"Utility easement",pts:[{x:x0,y:y0},{x:x1,y:y0},{x:x1,y:y0+60},{x:x0,y:y0+60}]}];
   S.adu.x=455;S.adu.y=310;setMode("place");
+  // the chosen plan may not fit at that spot, so start it where it fits best
+  const b=bestSpot();if(b){S.adu.x=b.x;S.adu.y=b.y;S.adu.rot=b.rot;$("rot").value=b.rot;$("rotv").textContent=b.rot+"°";S.mapDirty=true;update()}
 }
 $("sample").addEventListener("click",sample);
 window.addEventListener("resize",()=>{layout();draw()});

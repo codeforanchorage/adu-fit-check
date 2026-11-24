@@ -59,6 +59,9 @@ export const SR=102634;
 export const FT_PER_UNIT=1;
 
 const NEAR_PARCELS_FT=40,NEAR_STREETS_FT=150,MIN_PIECE_SQFT=20;
+// How far out to fetch buildings for shadows. At noon on 21 December the Anchorage sun is
+// about 5 degrees up, and a 25 ft building's shadow is about 270 ft long.
+const SHADOW_REACH_FT=300;
 // Pre-Approved ADU Plans permit checklist (March 2026): flood review when in or within 300 ft of a flood zone.
 // Keep in step with FLAG_RULES.floodBufferFt in rules.js.
 const FLOOD_NEAR_FT=300;
@@ -122,7 +125,8 @@ export async function findParcels(address){
 
 // Everything else needed to draw one parcel. Coordinates come back as {x, y} in feet with
 // y pointing down the screen (y = minus northing), so north is up when drawn.
-// Returns {lot, bldgs:[{pts, area}], bldgArea, neighbors:[polygon], lines:[{type,label,pts}], center:{lat,lon}|null}
+// Returns {lot, bldgs:[{pts, area}], bldgArea, neighbors:[polygon], lines:[{type,label,pts}], center:{lat,lon}|null,
+//          around:[{pts, h (feet, or null when not mapped)}]|null}
 export async function loadSite(parcel){
   const P=([x,y])=>({x:x*FT_PER_UNIT,y:-y*FT_PER_UNIT});
   const outer=parcel.lot[0],xs=outer.map(p=>p[0]),ys=outer.map(p=>p[1]);
@@ -131,6 +135,13 @@ export async function loadSite(parcel){
   // Middle of the parcel in latitude and longitude, only for the "See street view" link.
   const where=query(LAYERS.parcels,{where:"Parcel_ID='"+String(parcel.pid).replace(/[^0-9A-Za-z]/g,"")+"' AND GIS_Category='Parcel'",returnExtentOnly:"true",outSR:"4326"})
     .then(d=>{const e=d.extent;return e&&isFinite(e.xmin+e.ymin+e.xmax+e.ymax)?{lat:(e.ymin+e.ymax)/2,lon:(e.xmin+e.xmax)/2}:null}).catch(()=>null);
+  // Every building near the lot, with its mapped height, for drawing shadows. ELEVATION is
+  // not documented by the layer; across the whole layer (checked 2026-11-24) it runs from 8
+  // to 316 with a median of 21, and the named towers match, so it is read as height above
+  // ground in feet, probably to the highest point of the roof. About one building in five has
+  // no value. If this lookup fails the lot still loads, without shadows.
+  const around=query(LAYERS.buildings,{...box(SHADOW_REACH_FT),where:"1=1",outFields:"ELEVATION",returnGeometry:"true"})
+    .then(d=>(d.features||[]).flatMap(f=>ringsToPolygons(f.geometry&&f.geometry.rings).map(p=>({pts:p[0].map(P),h:typeof f.attributes.ELEVATION==="number"&&f.attributes.ELEVATION>0?f.attributes.ELEVATION:null})))).catch(()=>null);
   const [b,nb,st,al]=await Promise.all([
     // exact outlines: no maxAllowableOffset, no geometry simplification
     query(LAYERS.buildings,{geometry:JSON.stringify({rings:[outer],spatialReference:{wkid:SR}}),geometryType:"esriGeometryPolygon",inSR:String(SR),spatialRel:"esriSpatialRelIntersects",outFields:"OBJECTID",returnGeometry:"true"}),
@@ -149,7 +160,8 @@ export async function loadSite(parcel){
     bldgArea:pieces.reduce((s,p)=>s+p.area,0),
     neighbors:(nb.features||[]).flatMap(f=>ringsToPolygons(f.geometry&&f.geometry.rings)).map(p=>p[0].map(P)),
     lines,
-    center:await where
+    center:await where,
+    around:await around
   };
 }
 

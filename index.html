@@ -78,7 +78,7 @@ td.num,th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabu
 label{display:flex;flex-direction:column;gap:3px;font-size:12.5px;color:var(--muted)}
 label.check{flex-direction:row;align-items:flex-start;gap:8px;font-size:14px;color:var(--ink);margin:5px 0}
 label.check input{margin-top:3px}
-input[type=number],input[type=text],select{font:inherit;font-size:14px;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:5px 7px;width:100%}
+input[type=number],input[type=text],input[type=date],select{font:inherit;font-size:14px;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:5px 7px;width:100%}
 input[type=range]{width:100%}
 .small{font-size:12.5px;color:var(--muted);margin:8px 0 0}
 .flagsrc{margin:-2px 0 8px 25px}.flagsrc:empty{display:none}
@@ -174,6 +174,26 @@ input[type=range]{width:100%}
         <label class="check" style="margin-top:12px"><input type="checkbox" id="tall"><span>Taller than 15 ft and next to an R-1 or R-1A lot (10 ft side setback applies)</span></label>
         <label class="check"><input type="checkbox" id="showMap" checked><span>Show the green and red fit map</span></label>
         <label class="check"><input type="checkbox" id="showDim" checked><span>Show distances to lot lines</span></label>
+      </section>
+
+      <section class="panel card">
+        <h2>Shadows</h2>
+        <label class="check"><input type="checkbox" id="sunOn" disabled><span>Show shadows on the drawing</span></label>
+        <div class="grid2">
+          <label>Date<input type="date" id="sunDate"></label>
+          <label>ADU height (ft)<input type="number" id="aduH" min="6" max="60" step="0.5" value="15"></label>
+          <label style="grid-column:1/-1">Time of day, Alaska time <span id="sunTimeV" style="font-family:var(--mono)">1:00 pm</span>
+            <input type="range" id="sunTime" min="0" max="1425" step="15" value="780">
+          </label>
+        </div>
+        <div class="row" style="margin-top:8px" role="group" aria-label="Jump to a date">
+          <button type="button" data-sunday="12-21">21 Dec</button>
+          <button type="button" data-sunday="03-21">21 Mar</button>
+          <button type="button" data-sunday="06-21">21 Jun</button>
+          <button type="button" data-sunday="today">Today</button>
+        </div>
+        <p class="small" id="sunMsg" aria-live="polite"></p>
+        <p class="small">For thinking and discussion only. No shadow rule is checked. The drawing treats the ground as flat and every building as a flat-topped block at the height in the Municipality's building map, which looks to be the highest point of the roof, so building shadows are a little overstated. Trees and fences are not shown, and they often matter more. The plan sheets print no height, so the ADU height starts as a guess: change it to your own.</p>
       </section>
 
       <section class="panel card">

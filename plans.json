@@ -17,6 +17,8 @@
       "stories": 1,
       "overGarage": false,
       "height": null,
+      "heightGuess": 15,
+      "heightGuessSource": "Guess for drawing shadows only: one story with a vaulted ceiling. The cover sheet prints no height.",
       "areas": "Anchorage, Girdwood and Chugiak-Eagle River",
       "sheet": "https://www.muni.org/Documents/Departments/Public%20Works%20and%20Infrastructure/Development%20Services%20home/Pre-Approved%20ADUs/Near%20Point%20Cover%20Sheet.pdf"
     },
@@ -34,6 +36,8 @@
       "stories": 2,
       "overGarage": true,
       "height": null,
+      "heightGuess": 28,
+      "heightGuessSource": "Guess for drawing shadows only: two stories with a steep gable roof. The cover sheet prints no height. AMC 21.05.070D.1 allows up to 30 ft over a garage.",
       "areas": "Anchorage, Girdwood and Chugiak-Eagle River",
       "sheet": "https://www.muni.org/Documents/Departments/Public%20Works%20and%20Infrastructure/Development%20Services%20home/Pre-Approved%20ADUs/Williwaw%20Cover%20Sheet.pdf"
     }
