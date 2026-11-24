@@ -18,7 +18,7 @@ JPEG = b"\xff\xd8\xff\xe0" + b"0" * 2000
 PNG = b"\x89PNG\r\n\x1a\n" + b"0" * 2000
 GOOD = {
     "lot": [{"x": 100, "y": 100}, {"x": 900, "y": 100}, {"x": 900, "y": 900}, {"x": 100, "y": 900}],
-    "front_edge": 2, "alley_edges": [],
+    "street_edges": [{"edge": 2, "street": "W. EXAMPLE AVENUE"}, {"edge": 1, "street": "SAMPLE STREET"}], "alley_edges": [],
     "buildings": [{"label": "House", "pts": [{"x": 300, "y": 600}, {"x": 700, "y": 600}, {"x": 700, "y": 800}, {"x": 300, "y": 800}]}],
     "no_build": [], "scale": {"p1": {"x": 100, "y": 100}, "p2": {"x": 900, "y": 100}, "feet": 60.0},
     "zoning": "R-1", "notes": "",
@@ -60,6 +60,8 @@ class Reads(unittest.TestCase):
         self.assertEqual(r["statusCode"], 200)
         self.assertEqual(body["lot"], [[100, 100], [900, 100], [900, 900], [100, 900]])
         self.assertEqual(body["buildings"][0]["pts"][0], [300, 600])
+        self.assertEqual([s["edge"] for s in body["street_edges"]], [2, 1])
+        self.assertEqual(body["front_edge"], 2)   # the first street, for an older copy of the page
         self.assertEqual(body["scale"], {"p1": [100, 100], "p2": [900, 100], "feet": 60.0})
         self.assertEqual(r["headers"]["Access-Control-Allow-Origin"], ORIGIN)
         self.assertEqual(r["headers"]["Cache-Control"], "no-store")
@@ -143,6 +145,7 @@ class Logs(unittest.TestCase):
         self.assertIn('"lot_points": 4', line)
         self.assertNotIn(base64.b64encode(JPEG).decode()[:40], line)
         self.assertNotIn("900", line)        # no coordinates
+        self.assertNotIn("EXAMPLE", line)    # no street names
         self.assertNotIn("test-key", line)   # no key
 
 

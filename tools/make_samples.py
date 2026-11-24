@@ -156,7 +156,7 @@ def city_lot_with_alley():
     s.dashed((28, 5), (28, 0), 5, 4); s.dashed((44, 5), (44, 0), 5, 4)
     s.north(930, 240)
     return s, {"file": "sample-city-lot-alley.jpg", "title": "City lot with an alley",
-               "lot": lot, "front_edge": 2, "alley_edges": [0], "buildings": {"House": house, "Garage": garage}, "no_build": {}, "zoning": "R-1"}
+               "lot": lot, "front_edge": 2, "street_edges": [2], "alley_edges": [0], "buildings": {"House": house, "Garage": garage}, "no_build": {}, "zoning": "R-1"}
 
 
 def corner_lot():
@@ -177,7 +177,7 @@ def corner_lot():
     s.building(shed, "SHED", "10' x 12'")
     s.north(95, 250)
     return s, {"file": "sample-corner-lot.jpg", "title": "Corner lot",
-               "lot": lot, "front_edge": 2, "alley_edges": [], "buildings": {"House": house, "Shed": shed}, "no_build": {"Utility easement": ease}, "zoning": "R-2M"}
+               "lot": lot, "front_edge": 2, "street_edges": [2, 1], "alley_edges": [], "buildings": {"House": house, "Shed": shed}, "no_build": {"Utility easement": ease}, "zoning": "R-2M"}
 
 
 def large_lot_with_septic():
@@ -205,7 +205,7 @@ def large_lot_with_septic():
     s.text("LOT AREA: 32,600 SQ FT", (W / 2, 150), 14)
     s.north(960, 250)
     return s, {"file": "sample-large-lot-septic.jpg", "title": "Large lot with a well and septic field",
-               "lot": lot, "front_edge": 3, "alley_edges": [], "buildings": {"House": house, "Shop": shop},
+               "lot": lot, "front_edge": 3, "street_edges": [3], "alley_edges": [], "buildings": {"House": house, "Shop": shop},
                "no_build": {"Septic field": septic, "Drainage easement": ease}, "zoning": "R-6"}
 
 
@@ -217,7 +217,7 @@ def main():
         s.im.save(os.path.join(OUT, a["file"]), "JPEG", quality=88)
         answers["samples"].append({
             "file": a["file"], "title": a["title"], "width_px": W, "height_px": H, "px_per_ft": s.k,
-            "lot": s.norm(a["lot"]), "front_edge": a["front_edge"], "alley_edges": a["alley_edges"],
+            "lot": s.norm(a["lot"]), "front_edge": a["front_edge"], "street_edges": a["street_edges"], "alley_edges": a["alley_edges"],
             "buildings": {k: s.norm(v) for k, v in a["buildings"].items()},
             "no_build": {k: s.norm(v) for k, v in a["no_build"].items()},
             "zoning": a["zoning"],

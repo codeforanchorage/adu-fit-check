@@ -48,7 +48,7 @@ edge, and y runs from 0 at the top edge to 1000 at the bottom edge.
 Report:
 - lot: the corners of the lot boundary, in order around the boundary. Edge i runs from corner \
 i to corner i+1, and the last edge runs back to corner 0.
-- front_edge: the index of the lot edge that runs along the street.
+- street_edges: every lot edge that runs along a street, with the street name printed beside \nit (an empty string if no name is printed). A corner lot has edges on two streets: list them \nall. Put the edge the house faces first. Do not list alleys here.
 - alley_edges: the indexes of any lot edges that run along an alley. Empty if there are none.
 - buildings: the outline of each existing structure, such as the house, garage and sheds, \
 with a short label for each.
@@ -64,11 +64,12 @@ If the image is not a survey or plot plan of a lot, return an empty lot and say 
 
 POINT = {"type": "object", "properties": {"x": {"type": "number"}, "y": {"type": "number"}}, "required": ["x", "y"], "additionalProperties": False}
 SHAPE = {"type": "object", "properties": {"label": {"type": "string"}, "pts": {"type": "array", "items": POINT}}, "required": ["label", "pts"], "additionalProperties": False}
+STREET = {"type": "object", "properties": {"edge": {"type": "integer"}, "street": {"type": "string"}}, "required": ["edge", "street"], "additionalProperties": False}
 SCHEMA = {
     "type": "object",
     "properties": {
         "lot": {"type": "array", "items": POINT},
-        "front_edge": {"type": "integer"},
+        "street_edges": {"type": "array", "items": STREET},
         "alley_edges": {"type": "array", "items": {"type": "integer"}},
         "buildings": {"type": "array", "items": SHAPE},
         "no_build": {"type": "array", "items": SHAPE},
@@ -76,7 +77,7 @@ SCHEMA = {
         "zoning": {"type": "string"},
         "notes": {"type": "string"},
     },
-    "required": ["lot", "front_edge", "alley_edges", "buildings", "no_build", "scale", "zoning", "notes"],
+    "required": ["lot", "street_edges", "alley_edges", "buildings", "no_build", "scale", "zoning", "notes"],
     "additionalProperties": False,
 }
 
@@ -136,9 +137,13 @@ def to_page_shape(d):
     """The page (ui.js applyAI) takes points as [x, y] pairs."""
     pt = lambda p: [p["x"], p["y"]]  # noqa: E731
     shapes = lambda a: [{"label": s["label"][:40], "pts": [pt(p) for p in s["pts"]]} for s in a]  # noqa: E731
+    streets = [{"edge": s["edge"], "street": s["street"][:40]} for s in d["street_edges"]]
     return {
         "lot": [pt(p) for p in d["lot"]],
-        "front_edge": d["front_edge"],
+        # every street side, so a corner lot gets a front setback on both streets
+        "street_edges": streets,
+        # the first one alone, for a copy of the page from before street_edges
+        "front_edge": streets[0]["edge"] if streets else -1,
         "alley_edges": d["alley_edges"],
         "buildings": shapes(d["buildings"]),
         "no_build": shapes(d["no_build"]),
@@ -196,7 +201,7 @@ def read_survey(raw, media_type):
         out = to_page_shape(json.loads(text))
     except (ValueError, KeyError, TypeError) as e:
         raise Problem(502, "bad_reply", "The survey reader gave an answer the page cannot use.") from e
-    facts.update(lot_points=len(out["lot"]), buildings=len(out["buildings"]), no_build=len(out["no_build"]), scale_found=out["scale"]["feet"] > 0)
+    facts.update(lot_points=len(out["lot"]), street_edges=len(out["street_edges"]), buildings=len(out["buildings"]), no_build=len(out["no_build"]), scale_found=out["scale"]["feet"] > 0)
     return out, facts
 
 

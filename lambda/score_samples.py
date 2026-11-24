@@ -38,13 +38,11 @@ for a in ans:
         continue
     print("  lot: %d corners traced, %d true, worst true corner off by %.1f ft" % (len(b["lot"]), len(a["lot"]), worst_ft(a["lot"], b["lot"], a)))
     n = len(b["lot"])
-    fe = b["front_edge"]
     if n:
-        p, q = b["lot"][fe % n], b["lot"][(fe + 1) % n]
-        tp, tq = a["lot"][a["front_edge"]], a["lot"][(a["front_edge"] + 1) % len(a["lot"])]
-        mid = lambda u, v: ((u[0] + v[0]) / 2, (u[1] + v[1]) / 2)
-        m, tm = mid(p, q), mid(tp, tq)
-        print("  front edge: traced midpoint (%.0f, %.0f), true (%.0f, %.0f)   alleys traced: %s, true: %s" % (m[0], m[1], tm[0], tm[1], b["alley_edges"], a["alley_edges"]))
+        # the reader may start the lot at a different corner, so street sides are compared by their midpoints
+        mids = lambda lot, idx: sorted("(%.0f, %.0f)" % ((lot[i % len(lot)][0] + lot[(i + 1) % len(lot)][0]) / 2, (lot[i % len(lot)][1] + lot[(i + 1) % len(lot)][1]) / 2) for i in idx)
+        print("  street sides: traced midpoints %s %s, true %s" % (mids(b["lot"], [s["edge"] for s in b["street_edges"]]), [s["street"] for s in b["street_edges"]], mids(a["lot"], a["street_edges"])))
+        print("  alleys: traced midpoints %s, true %s" % (mids(b["lot"], b["alley_edges"]), mids(a["lot"], a["alley_edges"])))
     for kind in ("buildings", "no_build"):
         for name, truth in a[kind].items():
             errs = sorted((worst_ft(truth, s["pts"], a), s["label"], len(s["pts"])) for s in b[kind] if s["pts"])

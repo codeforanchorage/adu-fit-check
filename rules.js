@@ -75,6 +75,22 @@ export function typesFromEdges(lot,edges){
   return {types,streets,multi,front:fi};
 }
 
+// Label lot lines from an AI tracing of a survey (lambda/handler.py), with the same rules as
+// typesFromEdges. streets is [{edge, street}] with the main street first; alleys is a list of
+// line numbers. Streets with no printed name are told apart by direction: two unnamed street
+// lines that turn more than 45 degrees from each other count as two streets. An older reader
+// sent one front line only (front), which is used when no street list comes.
+export function typesFromTrace(lot,streets,alleys,front){
+  const n=lot.length,ok=i=>Number.isInteger(i)&&i>=0&&i<n,edges=lot.map(()=>({kind:"lot"}));
+  const ang=i=>{const a=lot[i],b=lot[(i+1)%n];return Math.atan2(b.y-a.y,b.x-a.x)},turn=(i,j)=>{let d=Math.abs(ang(i)-ang(j))%Math.PI;return Math.min(d,Math.PI-d)};
+  const list=(Array.isArray(streets)?streets:[]).filter(s=>s&&ok(s.edge)),unnamed=[];
+  if(!list.length&&ok(front))list.push({edge:front,street:""});
+  list.forEach(s=>{const i=s.edge;if(edges[i].kind==="street")return;let label=String(s.street||"").trim().toUpperCase();
+    if(!label){let k=unnamed.findIndex(j=>turn(i,j)<Math.PI/4);if(k<0){unnamed.push(i);k=unnamed.length-1}label="unnamed street "+(k+1)}
+    edges[i]={kind:"street",label}});
+  (Array.isArray(alleys)?alleys:[]).forEach(i=>{if(ok(i)&&edges[i].kind!=="street")edges[i]={kind:"alley",label:"alley"}});
+  return typesFromEdges(lot,edges)}
+
 // The plan check.
 //   scene  {ftPerPx, lot, types, bldgs, nb:[{pts,label}], bldgArea (sq ft or null),
 //           adu:{w,d, floorArea (sq ft, only for a catalog plan)}}

@@ -1,7 +1,7 @@
 import {describe,it,expect} from "vitest";
 import {readFileSync} from "node:fs";
 import {rectPoly} from "../geometry.js";
-import {DIST,L,check,margin,reqFor,maxAduArea,normZone,autoTypes,typesFromEdges,flagResults,fmtDate,FLAG_RULES} from "../rules.js";
+import {DIST,L,check,margin,reqFor,maxAduArea,normZone,autoTypes,typesFromEdges,typesFromTrace,flagResults,fmtDate,FLAG_RULES} from "../rules.js";
 
 const P=(x,y)=>({x,y});
 const box=(x0,y0,x1,y1)=>[P(x0,y0),P(x1,y0),P(x1,y1),P(x0,y1)];
@@ -333,5 +333,34 @@ describe("lot line labels on lots that are not rectangles",()=>{
   it("line letters do not repeat on a lot with more than 26 lines",()=>{
     expect(L(0)).toBe("A");expect(L(25)).toBe("Z");expect(L(26)).toBe("AA");expect(L(27)).toBe("AB");
     expect(new Set(Array.from({length:60},(_,i)=>L(i))).size).toBe(60);
+  });
+});
+
+describe("lot lines from an AI tracing",()=>{
+  // 60 x 125 ft lot drawn top-left, top-right, bottom-right, bottom-left: line 2 is the bottom, line 1 the right side
+  const lot=[{x:0,y:0},{x:60,y:0},{x:60,y:125},{x:0,y:125}];
+  it("one street: front, rear opposite, sides between",()=>{
+    expect(typesFromTrace(lot,[{edge:2,street:"A ST"}],[]).types).toEqual(["rear","side","front","side"]);
+  });
+  it("corner lot: both street sides are fronts and there is no rear (AMC 21.06.030C.4)",()=>{
+    const r=typesFromTrace(lot,[{edge:2,street:"W. EXAMPLE AVENUE"},{edge:1,street:"SAMPLE STREET"}],[]);
+    expect(r.types).toEqual(["side","front","front","side"]);expect(r.multi).toBe(true);
+  });
+  it("corner lot with no street names printed is still a corner lot",()=>{
+    const r=typesFromTrace(lot,[{edge:2,street:""},{edge:1,street:""}],[]);
+    expect(r.types).toEqual(["side","front","front","side"]);expect(r.multi).toBe(true);
+  });
+  it("a bent front on one unnamed street is one street",()=>{
+    const bent=[{x:0,y:0},{x:60,y:0},{x:60,y:125},{x:30,y:128},{x:0,y:125}];
+    const r=typesFromTrace(bent,[{edge:2,street:""},{edge:3,street:""}],[]);
+    expect(r.multi).toBe(false);expect(r.types).toEqual(["rear","side","front","front","side"]);
+  });
+  it("an alley stays an alley, and a street wins over an alley on the same line",()=>{
+    expect(typesFromTrace(lot,[{edge:2,street:"A ST"}],[0]).types).toEqual(["alley","side","front","side"]);
+    expect(typesFromTrace(lot,[{edge:2,street:"A ST"}],[2,0]).types[2]).toBe("front");
+  });
+  it("an older reader's single front line still works, and bad line numbers are ignored",()=>{
+    expect(typesFromTrace(lot,undefined,[],1).types).toEqual(["side","front","side","rear"]);
+    expect(typesFromTrace(lot,[{edge:9,street:"X"},{edge:-1,street:"Y"},null],[7]).types).toEqual(autoTypes(lot));
   });
 });

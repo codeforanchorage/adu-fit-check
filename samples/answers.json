@@ -26,6 +26,9 @@
     ]
    ],
    "front_edge": 2,
+   "street_edges": [
+    2
+   ],
    "alley_edges": [
     0
    ],
@@ -95,6 +98,10 @@
     ]
    ],
    "front_edge": 2,
+   "street_edges": [
+    2,
+    1
+   ],
    "alley_edges": [],
    "buildings": {
     "House": [
@@ -193,6 +200,9 @@
     ]
    ],
    "front_edge": 3,
+   "street_edges": [
+    3
+   ],
    "alley_edges": [],
    "buildings": {
     "House": [

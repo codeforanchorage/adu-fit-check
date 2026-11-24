@@ -7,7 +7,7 @@
 import {area,inside,ptSeg,cen,rectPoly,clean,openRing,classifyEdges,sweep,f1} from "./geometry.js";
 import {sunPosition,zonedToUtc,todayIn,shadowOffset,compass} from "./sun.js";
 import {SURVEY_READER,EXAMPLE_ADDRESS} from "./config.js";
-import {DIST,TYPES,TNAME,L,check,margin,maxAduArea,autoTypes,typesFromEdges,normZone,flagResults} from "./rules.js";
+import {DIST,TYPES,TNAME,L,check,margin,maxAduArea,autoTypes,typesFromEdges,typesFromTrace,normZone,flagResults} from "./rules.js";
 
 const $=id=>document.getElementById(id);
 const cv=$("cv"),cx=cv.getContext("2d");
@@ -306,7 +306,9 @@ function applyAI(o){
   // the gate goes down first: nothing below may show a result for a tracing nobody has checked
   S.unconfirmed=true;$("aiOk").hidden=false;
   S.lot=lot;S.lotClosed=true;S.draft=[];S.bldgs=bldgs;S.nb=nb;S.bldgArea=null;
-  S.types=autoTypes(S.lot,o.front_edge);(Array.isArray(o.alley_edges)?o.alley_edges:[]).forEach(i=>{if(Number.isInteger(i)&&i>=0&&i<lot.length&&S.types[i]!=="front")S.types[i]="alley"});
+  // Every line on a street is a front lot line, so a corner lot gets a front setback on both streets:
+  // the same labelling an address lookup gets (rules.js typesFromEdges).
+  const tr=typesFromTrace(S.lot,o.street_edges,o.alley_edges,o.front_edge);S.types=tr.types;
   const sc=o.scale;let scaled=false;if(sc&&Array.isArray(sc.p1)&&Array.isArray(sc.p2)&&sc.feet>0){const a=P(sc.p1),b=P(sc.p2),d=Math.hypot(a.x-b.x,a.y-b.y);if(d>5){S.ftPerPx=sc.feet/d;scaled=true}}
   // surveys print the district in many ways ("R-6", "R6", "ZONING: R-6 (example)"): take the district out of it
   const z=typeof o.zoning==="string"?normZone((o.zoning.toUpperCase().match(/[A-Z]+-?\d+[A-Z]?/)||[""])[0]):"";
@@ -315,6 +317,7 @@ function applyAI(o){
   if(!scaled){setMode("scale");$("guide").innerHTML="<b>The AI traced the lot but could not read a length.</b> Click the two ends of a line with a printed length, then type it. Then check the tracing and press \"This tracing looks right\"."}
   else{setMode("place");
     $("guide").innerHTML="<b>The AI made a first tracing. Check it before anything else.</b> Compare the blue lot lines, the numbered buildings and the orange areas with your survey. Fix anything that is off with steps 1 to 4, then press \"This tracing looks right\"."}
+  if(tr.multi)$("guide").appendChild(document.createTextNode(" The AI found more than one street beside this lot, so each street side is checked as a front."));
   if(o.notes)$("guide").appendChild(document.createTextNode(" Note from the AI: "+String(o.notes).slice(0,300)))}
 $("aiOk").addEventListener("click",()=>{S.unconfirmed=false;$("aiOk").hidden=true;S.mapDirty=true;setMode("place");placeBest();cv.focus({preventScroll:true})});
 $("ai").addEventListener("click",async()=>{if(!aiOn()||!S.img||!S.uploaded)return;const btn=$("ai"),img=S.img;btn.disabled=true;btn.textContent="Reading the survey… this can take half a minute";
