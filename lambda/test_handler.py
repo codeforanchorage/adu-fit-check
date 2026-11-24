@@ -119,6 +119,21 @@ class Refuses(unittest.TestCase):
         self.assertEqual((r["statusCode"], body["error"]), (502, "bad_reply"))
 
 
+class Crashes(unittest.TestCase):
+    def test_an_unexpected_error_still_answers_in_the_page_format(self):
+        r, body, _ = call(event(), FakeClient(raises=RuntimeError("boom")))
+        self.assertEqual((r["statusCode"], body["error"]), (500, "failed"))
+        self.assertEqual(r["headers"]["Access-Control-Allow-Origin"], ORIGIN)
+
+    def test_a_body_that_is_not_valid_base64_is_refused(self):
+        ev = event()
+        ev["isBase64Encoded"] = True
+        ev["body"] = "%%% not base64 %%%"
+        r, body, client = call(ev)
+        self.assertIn(r["statusCode"], (400, 500))
+        self.assertEqual(client.calls, [])
+
+
 class Logs(unittest.TestCase):
     def test_log_line_has_no_image_and_no_tracing(self):
         with self.assertLogs(level="INFO") as cm:

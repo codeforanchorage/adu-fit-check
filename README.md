@@ -70,7 +70,7 @@ python build_deploy.py --verify   # compares the live files with the build
 
 "Read survey with AI" posts the uploaded survey image to a small AWS Lambda behind API Gateway (`lambda/handler.py`, `terraform/aws/`), which asks Claude for a first tracing. The person must check it and press "This tracing looks right" before any result is shown.
 
-- **Spend is capped four ways:** an API Gateway usage plan with a daily quota (the page's key attaches it), reserved concurrency of 2, a throttle of one request a second, and a spend limit set on the Anthropic workspace that owns the model key.
+- **Spend is limited four ways:** an API Gateway usage plan with a daily quota (the page's key attaches it), reserved concurrency of 2, a throttle of one request a second, and a spend limit set on the Anthropic workspace that owns the model key. The quota is best-effort and the page's key is public, so one person could use up a day's quota for everyone; the concurrency cap and the Anthropic spend limit are the firm ceilings. A per-address limit would need a firewall rule in front of the API.
 - **The model key** is an encrypted SSM parameter, `/adu-fit-check/anthropic-api-key`, created by hand. It is not in this repository, the Lambda package or the Terraform state.
 - **Nothing is stored.** The image is held for one request. The log line has timing, token counts and how many shapes came back, never the image or the tracing.
 - **To switch it off:** `aws lambda put-function-concurrency --function-name adu-fit-check-survey-prod --reserved-concurrent-executions 0`, or empty `url` in `config.js`.
@@ -82,6 +82,8 @@ scripts/deploy_survey.sh --apply                       # apply the plan just sho
 ```
 
 After the first deploy, put the two Terraform outputs into `config.js` and deploy the page.
+
+Three made-up as-built surveys are in `samples/`, drawn by `tools/make_samples.py`, with what each one really shows in `samples/answers.json`. The page offers them under "Have a survey of your lot?" so people can try the upload and AI steps. `python lambda/score_samples.py` reads each through the live reader and reports how far each traced corner is from the truth (three paid calls).
 
 ## Who the page is written for
 

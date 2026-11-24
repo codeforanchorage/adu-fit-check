@@ -34,10 +34,18 @@ export function openRing(p){p=p.slice();if(p.length>1){const a=p[0],z=p[p.length
 
 // Tidy a lot outline so each straight lot line is one edge: drop the closing point, points
 // closer than 0.3 units, and points that sit within `tol` units of the straight line between
-// their neighbours. With tol in feet the outline never moves by more than tol.
-export function clean(p,tol){tol=tol==null?0.25:tol;p=openRing(p);let ch=true;
-  while(ch&&p.length>3){ch=false;for(let i=0;i<p.length;i++){const A=p[(i+p.length-1)%p.length],B=p[i],C=p[(i+1)%p.length],l1=Math.hypot(B.x-A.x,B.y-A.y),l2=Math.hypot(C.x-B.x,C.y-B.y);
-    if(l1<0.3||l2<0.3||ptSeg(B,A,C)<tol){p.splice(i,1);ch=true;break}}}return p}
+// their neighbours. The outline never moves by more than the larger of tol and 0.3: every
+// point that has been dropped must still lie that close to the line that replaced it, so a
+// curved lot line (a cul-de-sac) keeps its shape instead of being cut straight across.
+export function clean(p,tol){tol=tol==null?0.25:tol;const lim=Math.max(tol,0.3),len=(a,b)=>Math.hypot(b.x-a.x,b.y-a.y);
+  // each kept corner remembers the original points dropped between it and the next kept corner
+  const v=openRing(p).map(q=>({q,gone:[]}));let ch=true;
+  while(ch&&v.length>3){ch=false;for(let i=0;i<v.length;i++){const n=v.length,A=v[(i+n-1)%n],B=v[i],C=v[(i+1)%n];
+    if(!(len(A.q,B.q)<0.3||len(B.q,C.q)<0.3||ptSeg(B.q,A.q,C.q)<tol))continue;
+    const moved=A.gone.concat([B.q],B.gone);
+    if(moved.some(m=>ptSeg(m,A.q,C.q)>=lim))continue;
+    A.gone=moved;v.splice(i,1);ch=true;break}}
+  return v.map(x=>x.q)}
 
 // What lies outside each lot edge. All inputs in feet, same coordinate system.
 //   lot      polygon

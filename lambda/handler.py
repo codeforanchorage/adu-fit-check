@@ -176,6 +176,9 @@ def read_survey(raw, media_type):
     except anthropic.APIStatusError as e:
         log.error(json.dumps({"event": "model_error", "status": e.status_code, "request_id": getattr(e, "request_id", None)}))
         raise Problem(502, "model_error", "The survey reader had a problem.") from e
+    except anthropic.APIError as e:  # anything else the SDK raises, such as a reply it cannot parse
+        log.error(json.dumps({"event": "model_error", "error": type(e).__name__}))
+        raise Problem(502, "model_error", "The survey reader had a problem.") from e
     facts = {
         "ms": round((time.monotonic() - started) * 1000),
         "model": resp.model,
@@ -235,3 +238,8 @@ def lambda_handler(event, context):
     except Problem as p:
         log.info(json.dumps({"event": "read", "ok": False, "status": p.status, "code": p.code}))
         return reply(p.status, {"error": p.code, "message": p.message}, origin)
+    except Exception as e:  # noqa: BLE001
+        # A bug here must still answer in the page's own format, with the cross-origin headers,
+        # or the page cannot tell the person what happened. Only the kind of error is logged.
+        log.error(json.dumps({"event": "crash", "error": type(e).__name__}))
+        return reply(500, {"error": "failed", "message": "The survey reader had a problem."}, origin)

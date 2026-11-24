@@ -7,8 +7,11 @@
 #   - Not behind the shared fleet firewall, which blocks request bodies over 8 KB.
 #     A survey image is several hundred KB.
 #   - The route needs an API Gateway key. The key is public (it is in the page);
-#     its only job is to attach the usage plan's daily quota, which is the hard
-#     cap on how many paid model calls can be made in a day.
+#     its only job is to attach the usage plan's daily quota, which limits how
+#     many paid model calls can be made in a day. AWS applies usage plan quotas
+#     on a best-effort basis, and anyone can copy the key, so this is a limit and
+#     not a guarantee. The firm ceilings are the reserved concurrency below and
+#     the spend limit on the model provider's side.
 #
 # Build and deploy with scripts/deploy_survey.sh, which makes the zip first.
 
@@ -179,6 +182,10 @@ resource "aws_api_gateway_gateway_response" "cors_4xx" {
   response_parameters = {
     "gatewayresponse.header.Access-Control-Allow-Origin" = "'*'"
   }
+  # API Gateway's own default body, written out so Terraform does not try to remove it
+  response_templates = {
+    "application/json" = "{\"message\":$context.error.messageString}"
+  }
 }
 
 resource "aws_api_gateway_gateway_response" "cors_5xx" {
@@ -186,6 +193,10 @@ resource "aws_api_gateway_gateway_response" "cors_5xx" {
   response_type = "DEFAULT_5XX"
   response_parameters = {
     "gatewayresponse.header.Access-Control-Allow-Origin" = "'*'"
+  }
+  # API Gateway's own default body, written out so Terraform does not try to remove it
+  response_templates = {
+    "application/json" = "{\"message\":$context.error.messageString}"
   }
 }
 

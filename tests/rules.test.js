@@ -1,7 +1,7 @@
 import {describe,it,expect} from "vitest";
 import {readFileSync} from "node:fs";
 import {rectPoly} from "../geometry.js";
-import {DIST,check,margin,reqFor,maxAduArea,normZone,autoTypes,typesFromEdges,flagResults,fmtDate,FLAG_RULES} from "../rules.js";
+import {DIST,L,check,margin,reqFor,maxAduArea,normZone,autoTypes,typesFromEdges,flagResults,fmtDate,FLAG_RULES} from "../rules.js";
 
 const P=(x,y)=>({x,y});
 const box=(x0,y0,x1,y1)=>[P(x0,y0),P(x1,y0),P(x1,y1),P(x0,y1)];
@@ -313,5 +313,25 @@ describe("other reviews from map layers (Pre-Approved ADU Plans permit checklist
   });
   it("fmtDate",()=>{
     expect(fmtDate(D)).toBe("15 Nov 2019");expect(fmtDate(null)).toBe("date not given");
+  });
+});
+
+describe("lot line labels on lots that are not rectangles",()=>{
+  const P2=(x,y)=>({x,y});
+  it("a front line traced with a bend: the other half is never a rear (AMC 21.15.040: the rear does not intersect the front)",()=>{
+    // 60 x 125 ft lot with an extra corner in the middle of the street side (the lowest line)
+    const lot=[P2(0,0),P2(60,0),P2(60,125),P2(30,125.5),P2(0,125)];
+    const t=autoTypes(lot);
+    expect(t.filter(x=>x==="front")).toHaveLength(1);
+    expect(t[0]).toBe("rear");                       // the far side is still the rear
+    expect(t[2]==="front"?t[3]:t[2]).toBe("side");   // the other half of the street side is not called a rear
+    expect(t.filter(x=>x==="rear")).toHaveLength(1);
+  });
+  it("a three-sided lot has no rear",()=>{
+    expect(autoTypes([P2(0,0),P2(100,0),P2(50,80)]).includes("rear")).toBe(false);
+  });
+  it("line letters do not repeat on a lot with more than 26 lines",()=>{
+    expect(L(0)).toBe("A");expect(L(25)).toBe("Z");expect(L(26)).toBe("AA");expect(L(27)).toBe("AB");
+    expect(new Set(Array.from({length:60},(_,i)=>L(i))).size).toBe(60);
   });
 });

@@ -6,7 +6,7 @@
 
 import {area,inside,ptSeg,cen,rectPoly,clean,openRing,classifyEdges,sweep,f1} from "./geometry.js";
 import {sunPosition,zonedToUtc,todayIn,shadowOffset,compass} from "./sun.js";
-import {SURVEY_READER} from "./config.js";
+import {SURVEY_READER,EXAMPLE_ADDRESS} from "./config.js";
 import {DIST,TYPES,TNAME,L,check,margin,maxAduArea,autoTypes,typesFromEdges,normZone,flagResults} from "./rules.js";
 
 const $=id=>document.getElementById(id);
@@ -15,38 +15,57 @@ const S={img:null,iw:760,ih:1000,ftPerPx:null,lot:[],lotClosed:false,types:[],bl
   adu:{w:20,d:30,x:0,y:0,rot:0},scalePts:[],map:null,mapDirty:true,v:1,ox:0,view:"drawing",three:false};
 
 function aduPoly(x,y){return rectPoly(S.adu,x,y,S.ftPerPx)}
-function rules(){const n=id=>Math.max(0,parseFloat($(id).value)||0);const h=n("house");return {front:n("rFront"),side:n("rSide"),rear:n("rRear"),cov:n("rCov"),sep:n("rSep"),tall:$("tall").checked,maxA:maxAduArea(h),house:h}}
+function rules(){const n=id=>Math.max(0,parseFloat($(id).value)||0);const h=n("house");return {front:n("rFront"),side:n("rSide"),rear:n("rRear"),cov:n("rCov"),sep:n("rSep"),tall:$("tall").checked&&aduHeight()>15,maxA:maxAduArea(h),house:h}}
+// No result may be shown while an AI tracing is unchecked, or while the page has no rules for
+// the lot's zoning district. Everything that shows or implies a verdict asks this first.
+const blocked=()=>!!(S.unconfirmed||S.needRules);
+let loadSeq=0;   // goes up whenever a new lot or survey replaces the drawing, so late answers for the old one are dropped
 function ready(){return S.ftPerPx&&S.lotClosed&&S.lot.length>=3}
 
-function gridPts(){const xs=S.lot.map(p=>p.x),ys=S.lot.map(p=>p.y),x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys);
-  const stepFt=Math.max(2,Math.sqrt(area(S.lot)*S.ftPerPx*S.ftPerPx/5000)),st=stepFt/S.ftPerPx,pts=[];
+// Points to try the ADU's centre at: a grid over the lot, at least minFt feet apart.
+function gridPts(minFt,about){const xs=S.lot.map(p=>p.x),ys=S.lot.map(p=>p.y),x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys);
+  const stepFt=Math.max(minFt||2,Math.sqrt(area(S.lot)*S.ftPerPx*S.ftPerPx/(about||5000))),st=stepFt/S.ftPerPx,pts=[];
   for(let y=y0+st/2;y<y1;y+=st)for(let x=x0+st/2;x<x1;x+=st)if(inside({x,y},S.lot))pts.push({x,y});return {pts,st}}
 function globalOk(R){const g=check(S,aduPoly(S.adu.x,S.adu.y),R,false);return !g.rows.slice(-2).some(r=>!r.ok)}
 function buildMap(){
-  S.mapDirty=false;S.map=null;if(!ready()||S.unconfirmed)return;
+  S.mapDirty=false;S.map=null;if(!ready()||blocked())return;
   const R=rules(),g=gridPts(),gl=globalOk(R);
   S.map={cells:g.pts.map(p=>({x:p.x,y:p.y,ok:gl&&check(S,aduPoly(p.x,p.y),R,true).ok})),st:g.st};
 }
-// best position for the current footprint, trying the current rotation and a quarter turn
-function bestSpot(){if(!ready())return null;const R=rules();if(!globalOk(R))return null;const g=gridPts(),keep=S.adu.rot;let best=null;
-  for(const rot of [keep,(keep+90)%180]){S.adu.rot=rot;for(const p of g.pts){const poly=aduPoly(p.x,p.y);if(!check(S,poly,R,true).ok)continue;const m=margin(S,poly,R);if(!best||m>best.m+(rot===keep?0:0.5))best={m,x:p.x,y:p.y,rot}}}
+// Best position for the current footprint: the spot with the most room to spare.
+// It first tries a coarse grid at the current turn and a quarter turn from it. If nothing
+// fits it looks harder before saying so: a 1 ft grid, and the ADU turned to line up with the
+// longest lot line. A spot with less than about a foot to spare can still be missed, which is
+// why the page says "No room found" and not "does not fit".
+function bestSpot(){if(!ready()||blocked())return null;const R=rules();if(!globalOk(R))return null;const keep=S.adu.rot,n=S.lot.length;let best=null;
+  const scan=(g,rots)=>{for(const rot of rots){S.adu.rot=rot;for(const p of g.pts){const poly=aduPoly(p.x,p.y);if(!check(S,poly,R,true).ok)continue;const m=margin(S,poly,R);if(!best||m>best.m+(rot===keep?0:0.5))best={m,x:p.x,y:p.y,rot}}}};
+  const quarter=[keep,(keep+90)%180];scan(gridPts(),quarter);
+  if(!best){let li=0,ll=0;for(let i=0;i<n;i++){const a=S.lot[i],b=S.lot[(i+1)%n],l=Math.hypot(b.x-a.x,b.y-a.y);if(l>ll){ll=l;li=i}}
+    const a=S.lot[li],b=S.lot[(li+1)%n],e=((Math.round(Math.atan2(b.y-a.y,b.x-a.x)*180/Math.PI/5)*5)%180+180)%180;
+    scan(gridPts(1,8000),[...new Set(quarter.concat([e,(e+90)%180]))])}
   S.adu.rot=keep;return best}
 // The Municipality's pre-approved plans, from plans.json (loadPlans below). Empty until it
 // loads, and it stays empty if it cannot be read: "Custom size" still works without it.
 let PLANS=[];
-function computeFits(){const box=$("fits");box.innerHTML="";if(!ready()){return}const keep={...S.adu};
-  PLANS.forEach(p=>{S.adu.w=p.w;S.adu.d=p.d;S.adu.floorArea=p.floorArea;const b=bestSpot();const btn=document.createElement("button");btn.type="button";btn.className="fitbtn";
-    const t=document.createElement("span");t.textContent=p.name;const g=document.createElement("span");g.className="tag "+(b?"ok":"bad");g.textContent=b?"Could fit":"No room";btn.append(t,g);
+function computeFits(){const box=$("fits"),had=document.activeElement&&box.contains(document.activeElement)?document.activeElement.dataset.plan:null;box.innerHTML="";if(!ready()||blocked()){return}const keep={...S.adu};
+  PLANS.forEach(p=>{S.adu.w=p.w;S.adu.d=p.d;S.adu.floorArea=p.floorArea;const b=bestSpot();const btn=document.createElement("button");btn.type="button";btn.className="fitbtn";btn.dataset.plan=p.id;
+    const t=document.createElement("span");t.textContent=p.name;const g=document.createElement("span");g.className="tag "+(b?"ok":"bad");g.textContent=b?"Could fit":"No room found";btn.append(t,g);
     btn.addEventListener("click",()=>{$("design").value=p.id;design();goBest()});box.appendChild(btn)});
-  Object.assign(S.adu,keep)}
+  Object.assign(S.adu,keep);
+  // the buttons were rebuilt: put keyboard focus back on the one that had it
+  if(had){const again=[...box.children].find(x=>x.dataset.plan===had);if(again)again.focus()}}
 // move the ADU to the spot with the most room to spare, if there is one. Returns that spot or null.
-function placeBest(){const b=bestSpot();if(b){S.adu.x=b.x;S.adu.y=b.y;S.adu.rot=b.rot;$("rot").value=b.rot;$("rotv").textContent=b.rot+"°";S.mapDirty=true;update()}return b}
-function goBest(){if(S.mode!=="place")setMode("place");const b=placeBest();
-  $("bestMsg").textContent=b?"Placed with "+f1(Math.max(0,b.m))+" ft to spare.":"There is no room for this design on the lot. Try a smaller one, or turn it."}
+function setRot(r){S.adu.rot=r;$("rot").value=r;$("rotv").textContent=r+"°";$("rot").setAttribute("aria-valuetext",r+" degrees")}
+function placeBest(){const b=bestSpot();if(b){S.adu.x=b.x;S.adu.y=b.y;setRot(b.rot);S.mapDirty=true;update()}return b}
+function goBest(){if(S.mode!=="place")setMode("place");if(blocked()){update();return}const b=placeBest();
+  $("bestMsg").textContent=b?"Placed with "+f1(Math.max(0,b.m))+" ft to spare.":"No room was found for this design on the lot. Try a smaller one, or turn it."}
 
 /* ---------- drawing ---------- */
 function layout(){
-  const w=cv.clientWidth,maxH=Math.max(420,Math.min(window.innerHeight*0.82,900));
+  // On a wide screen the drawing's panel stays in view while the sections beside it scroll,
+  // so the drawing is sized to fit the window under whatever sits above it in the panel.
+  const w=cv.clientWidth,wide=window.matchMedia("(min-width:901px)").matches,above=cv.getBoundingClientRect().top-cv.closest(".stage").getBoundingClientRect().top;
+  const maxH=wide?Math.max(340,Math.min(window.innerHeight-above-95,900)):Math.max(420,Math.min(window.innerHeight*0.82,900));
   S.v=Math.min(w/S.iw,maxH/S.ih);const h=S.ih*S.v;S.ox=(w-S.iw*S.v)/2;
   const dpr=window.devicePixelRatio||1;cv.style.height=h+"px";cv.width=Math.round(w*dpr);cv.height=Math.round(h*dpr);
   cx.setTransform(dpr,0,0,dpr,0,0);
@@ -95,7 +114,7 @@ function draw(){
     cx.beginPath();cx.moveTo(X(a),Y(a));cx.lineTo(X(b),Y(b));cx.strokeStyle=c;cx.lineWidth=o.ok?1.2:2.2;cx.setLineDash(o.ok?[5,4]:[]);cx.stroke();cx.setLineDash([]);
     const t=o.m,mx=(X(a)+X(b))/2,my=(Y(a)+Y(b))/2;cx.font="600 11px 'IBM Plex Mono',monospace";const w=cx.measureText(t).width+8;cx.fillStyle="#fff";cx.fillRect(mx-w/2,my-8,w,16);cx.strokeStyle=c;cx.lineWidth=1;cx.strokeRect(mx-w/2,my-8,w,16);cx.fillStyle=c;cx.textAlign="center";cx.textBaseline="middle";cx.fillText(t,mx,my+0.5)});
   // ADU
-  if(ready()&&S.mode==="place"&&!S.unconfirmed){const p=aduPoly(S.adu.x,S.adu.y),r=S.result;const ok=r&&r.ok;
+  if(ready()&&S.mode==="place"&&!blocked()){const p=aduPoly(S.adu.x,S.adu.y),r=S.result;const ok=r&&r.ok;
     path(p,true);cx.fillStyle=ok?"rgba(23,140,80,.55)":"rgba(200,45,35,.55)";cx.fill();cx.strokeStyle=ok?"#0e5a35":"#8c1c16";cx.lineWidth=2.5;cx.stroke();
     cx.fillStyle="#fff";cx.font="600 13px 'IBM Plex Sans',sans-serif";cx.textAlign="center";cx.textBaseline="middle";
     cx.fillText((S.adu.plan?S.adu.plan.name.replace(/^The /,""):"ADU")+" "+S.adu.w+" × "+S.adu.d,X(S.adu),Y(S.adu)-8);cx.fillText(ok?"Fits":"Does not fit",X(S.adu),Y(S.adu)+9)}
@@ -109,9 +128,13 @@ function update(){
   const needFits=S.mapDirty;
   const st=$("status"),tx=$("statusText"),why=$("why"),tb=$("checks").tBodies[0];why.innerHTML="";tb.innerHTML="";
   const tag=$("fitTag"),hint=$("nextHint");
+  $("bestMsg").textContent="";   // it described the last "Find the best spot", not what is drawn now
   // an AI tracing is only a first guess: no result is shown until the person has checked it
   if(S.unconfirmed&&ready()){S.result=null;st.className="status idle";tx.textContent="Check the tracing first";tag.className="tag";tag.textContent="";
     hint.textContent="Compare the tracing with your survey, fix anything that is off, then press \"This tracing looks right\".";draw();$("fits").innerHTML="";return}
+  // a zoning district this page has no rules for: say so, and show no result worked out with another district's numbers
+  if(S.needRules&&ready()){S.result=null;st.className="status idle";tx.textContent="This page does not have the rules for this lot";tag.className="tag";tag.textContent="";
+    hint.textContent="Its zoning district, "+S.needRules+", is not in this page's list, so the page cannot say whether an ADU fits. Zoning staff can tell you the setbacks for this lot. If you know them, open \"The rules used for this lot\" and enter them.";draw();$("fits").innerHTML="";return}
   if(!ready()){S.result=null;st.className="status idle";tx.textContent=!S.ftPerPx?"Set the scale first (step 1).":"Trace the lot lines (step 2).";tag.className="tag";tag.textContent="";hint.textContent="";draw();$("fits").innerHTML="";return}
   const r=check(S,aduPoly(S.adu.x,S.adu.y),rules(),false);S.result=r;
   st.className="status "+(r.ok?"ok":"bad");tx.textContent=r.ok?"This ADU could fit here":"It does not fit at this spot";
@@ -145,7 +168,7 @@ function setMode(m){S.mode=m;S.draft=[];if(m!=="scale")S.scalePts=[];if(S.three&
   document.querySelectorAll("[data-mode]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.mode===m));
   $("guide").innerHTML=GUIDE[m];$("scaleBox").classList.toggle("on",m==="scale"&&S.scalePts.length===2);
   $("shapeBox").classList.toggle("on",m==="lot"||m==="bldg"||m==="nobuild");$("nbLabel").style.display=m==="nobuild"?"":"none";
-  cv.style.cursor=m==="place"?"grab":"crosshair";update()}
+  cv.style.cursor=m==="place"?"grab":"crosshair";layout();update();if(S.three&&v3)v3.resize()}
 function finish(){if(S.draft.length<3)return;const p=S.draft;S.draft=[];
   if(S.mode==="lot"){S.lot=p;S.lotClosed=true;S.types=autoTypes(S.lot);const c=cen(p);S.adu.x=c.x;S.adu.y=c.y}
   else if(S.mode==="bldg"){S.bldgs.push(p);S.bldgArea=null}else if(S.mode==="nobuild")S.nb.push({pts:p,label:$("nbLabel").value});
@@ -170,12 +193,22 @@ $("finish").addEventListener("click",finish);
 $("undo").addEventListener("click",()=>{if(S.draft.length)S.draft.pop();else if(S.mode==="bldg"){S.bldgs.pop();S.bldgArea=null}else if(S.mode==="nobuild")S.nb.pop();S.mapDirty=true;update()});
 $("clear").addEventListener("click",()=>{S.draft=[];if(S.mode==="lot"){S.lot=[];S.lotClosed=false;S.types=[]}else if(S.mode==="bldg"){S.bldgs=[];S.bldgArea=null}else S.nb=[];S.mapDirty=true;update()});
 $("scaleApply").addEventListener("click",()=>{const ft=parseFloat($("scaleFt").value);if(!(ft>0)||S.scalePts.length<2)return;
-  const d=Math.hypot(S.scalePts[0].x-S.scalePts[1].x,S.scalePts[0].y-S.scalePts[1].y);if(d<2)return;S.ftPerPx=ft/d;S.mapDirty=true;setMode(S.lotClosed?"place":"lot")});
+  const d=Math.hypot(S.scalePts[0].x-S.scalePts[1].x,S.scalePts[0].y-S.scalePts[1].y);if(d<2)return;S.ftPerPx=ft/d;S.mapDirty=true;
+  // a looked-up lot came with its own scale. Once the scale is set by hand, the building areas, nearby buildings and
+  // photo that came from the map no longer match the drawing, so they are dropped and the lot is treated as hand-traced.
+  if(S.site){S.site=null;S.info=null;S.bldgArea=null;S.view="drawing";$("viewBox").classList.remove("on");$("sunOn").checked=false;$("sunOn").disabled=true;show3d(false);clearFlagNotes();sunUpdate()}
+  setMode(S.lotClosed?"place":"lot")});
 
 /* ---------- controls ---------- */
 function design(){const p=PLANS.find(p=>p.id===$("design").value)||null;if(p){$("aw").value=p.w;$("ad").value=p.d}
   S.adu.w=Math.max(8,Math.min(60,parseFloat($("aw").value)||20));S.adu.d=Math.max(8,Math.min(60,parseFloat($("ad").value)||30));
   S.adu.plan=p;S.adu.floorArea=p?p.floorArea:null;planNote(p);if(p&&p.heightGuess>0)$("aduH").value=p.heightGuess;S.mapDirty=true;update();sunUpdate()}
+// Choose a zoning district the page has rules for, and fill in its numbers.
+function setDistrict(z){const d=DIST[z];if(!d)return;$("dist").value=z;$("rFront").value=d[0];$("rSide").value=d[1];$("rRear").value=d[2];$("rCov").value=d[3];S.needRules="";syncTall()}
+// AMC 21.05.070D.1: a detached ADU taller than 15 ft keeps 10 ft from a side line next to an
+// R-1 or R-1A lot. The page cannot see the neighbours' zoning, so it assumes they match this
+// lot's district: the box starts ticked in R-1 and R-1A, and the person can change it.
+function syncTall(){$("tall").checked=$("dist").value==="R-1"||$("dist").value==="R-1A"}
 // What the page says about the chosen plan: plain words first, and the numbers and where
 // they come from in a note that opens.
 function planNote(p){const el=$("planNote");el.textContent="";if(!p)return;
@@ -186,7 +219,7 @@ function planNote(p){const el=$("planNote");el.textContent="";if(!p)return;
   const d=document.createElement("details"),sm=document.createElement("summary"),t=document.createElement("p");sm.textContent="About this design's size, for builders and reviewers";t.style.margin="4px 0 0";
   t.textContent=(p.approx?"The footprint, about "+p.w+" × "+p.d+" ft, is scaled from the drawing on the Municipality's plan sheet, which prints no dimensions. Distances shown here may be off by a foot or two. ":"The footprint is "+p.w+" × "+p.d+" ft. ")
     +"Floor area is from the plan sheet. "
-    +(p.stories>1?"This plan is "+(p.stories===2?"two":p.stories)+" stories. If a neighbouring lot is R-1 or R-1A, tick the 10 ft side setback box under \"For builders and reviewers\" below. ":"")
+    +(p.stories>1?"This plan is "+(p.stories===2?"two":p.stories)+" stories, so it is taller than 15 ft: next to an R-1 or R-1A lot it must stay 10 ft from the side lot lines (see the box about neighbouring lots below). ":"")
     +"The sheet says: suited for use in "+p.areas+".";
   d.append(sm,t);el.appendChild(d)}
 async function loadPlans(){
@@ -202,11 +235,11 @@ async function loadPlans(){
 }
 $("design").addEventListener("change",design);
 ["aw","ad"].forEach(id=>$(id).addEventListener("input",()=>{$("design").value="custom";design()}));
-$("rot").addEventListener("input",()=>{$("bestMsg").textContent="";S.adu.rot=+$("rot").value;$("rotv").textContent=S.adu.rot+"°";S.mapDirty=true;update()});
+$("rot").addEventListener("input",()=>{setRot(+$("rot").value);S.mapDirty=true;update()});
 Object.keys(DIST).concat(["Custom"]).forEach(k=>{const o=document.createElement("option");o.value=k;o.textContent=k==="Custom"?"Custom values":k+"  (front "+DIST[k][0]+", side "+DIST[k][1]+", rear "+DIST[k][2]+" ft, "+DIST[k][3]+"% coverage)";$("dist").appendChild(o)});
-$("dist").addEventListener("change",()=>{const d=DIST[$("dist").value];if(d){$("rFront").value=d[0];$("rSide").value=d[1];$("rRear").value=d[2];$("rCov").value=d[3]}S.mapDirty=true;update()});
-["rFront","rSide","rRear","rCov"].forEach(id=>$(id).addEventListener("input",()=>{$("dist").value="Custom"}));
-["rFront","rSide","rRear","rCov","rSep","tall","house"].forEach(id=>$(id).addEventListener("input",()=>{S.mapDirty=true;update()}));
+$("dist").addEventListener("change",()=>{if(DIST[$("dist").value])setDistrict($("dist").value);S.needRules="";S.mapDirty=true;update()});
+["rFront","rSide","rRear","rCov"].forEach(id=>$(id).addEventListener("input",()=>{$("dist").value="Custom";S.needRules=""}));
+["rFront","rSide","rRear","rCov","rSep","tall","house","aduH"].forEach(id=>$(id).addEventListener("input",()=>{S.mapDirty=true;update()}));
 $("best").addEventListener("click",goBest);$("showDim").addEventListener("change",draw);
 $("showMap").addEventListener("change",draw);
 document.querySelectorAll(".flag").forEach(c=>c.addEventListener("change",flags));
@@ -218,13 +251,17 @@ $("copy").addEventListener("click",async()=>{const r=S.result;if(!r)return;
   setTimeout(()=>$("copied").textContent="",2500)});
 
 /* ---------- loading a survey ---------- */
-function setImage(c){S.uploaded=false;S.unconfirmed=false;$("aiOk").hidden=true;showAi();S.img=c;S.iw=c.width;S.ih=c.height;S.ftPerPx=null;S.lot=[];S.lotClosed=false;S.types=[];S.bldgs=[];S.nb=[];S.draft=[];S.scalePts=[];S.bldgArea=null;S.info=null;S.site=null;clearFlagNotes();
+function setImage(c){loadSeq++;S.uploaded=false;S.unconfirmed=false;$("aiOk").hidden=true;showAi();
+  // a new lot starts from the page's defaults, not the last lot's district, house size or ticked boxes
+  setDistrict("R-1");$("house").value="";$("rSep").value=0;document.querySelectorAll(".flag").forEach(b=>{b.checked=false});flags();setRot(0);$("addrMsg").textContent="";
+  S.img=c;S.iw=c.width;S.ih=c.height;S.ftPerPx=null;S.lot=[];S.lotClosed=false;S.types=[];S.bldgs=[];S.nb=[];S.draft=[];S.scalePts=[];S.bldgArea=null;S.info=null;S.site=null;clearFlagNotes();
   S.view="drawing";$("viewBox").classList.remove("on");$("viewDrawing").setAttribute("aria-pressed","true");$("viewAerial").setAttribute("aria-pressed","false");$("viewMsg").textContent="";
   $("sunOn").checked=false;$("sunOn").disabled=true;sunUpdate();show3d(false);
   S.mapDirty=true;layout()}
 function toCanvas(src,w,h){const m=1600/Math.max(w,h),k=Math.min(1,m),c=document.createElement("canvas");c.width=Math.round(w*k);c.height=Math.round(h*k);c.getContext("2d").drawImage(src,0,0,c.width,c.height);return c}
 function loadScript(u){return new Promise((res,rej)=>{const s=document.createElement("script");s.src=u;s.onload=res;s.onerror=rej;document.head.appendChild(s)})}
-$("file").addEventListener("change",async e=>{const f=e.target.files[0];if(!f)return;e.target.value="";
+// Take a survey file, from the upload button or one of the made-up samples.
+async function useFile(f){
   // images and PDFs only, 10 MB at most. Nothing is uploaded here: the file is read in the browser.
   if(f.size>10*1024*1024||!(/^image\//.test(f.type)||f.type==="application/pdf"||/\.(pdf|png|jpe?g|gif|webp|bmp)$/i.test(f.name))){
     $("tools").open=true;$("guide").innerHTML="<b>That file cannot be used.</b> Choose a photo, a scan or a PDF of the survey, 10 MB or smaller.";return}
@@ -232,16 +269,24 @@ $("file").addEventListener("change",async e=>{const f=e.target.files[0];if(!f)re
     if(f.type==="application/pdf"||/\.pdf$/i.test(f.name)){
       const base="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/";
       if(!window.pdfjsLib){await loadScript(base+"pdf.min.js");window.pdfjsLib.GlobalWorkerOptions.workerSrc=base+"pdf.worker.min.js"}
-      const pdf=await window.pdfjsLib.getDocument({data:await f.arrayBuffer()}).promise,pg=await pdf.getPage(1),v0=pg.getViewport({scale:1});
+      const pdf=await window.pdfjsLib.getDocument({data:await f.arrayBuffer(),isEvalSupported:false}).promise,pg=await pdf.getPage(1),v0=pg.getViewport({scale:1});
       const vp=pg.getViewport({scale:1600/Math.max(v0.width,v0.height)}),c=document.createElement("canvas");c.width=Math.round(vp.width);c.height=Math.round(vp.height);
       const g=c.getContext("2d");g.fillStyle="#fff";g.fillRect(0,0,c.width,c.height);await pg.render({canvasContext:g,viewport:vp}).promise;setImage(c);
     }else{
-      const url=URL.createObjectURL(f),im=new Image();await new Promise((res,rej)=>{im.onload=res;im.onerror=rej;im.src=url});setImage(toCanvas(im,im.naturalWidth,im.naturalHeight));URL.revokeObjectURL(url);
+      const url=URL.createObjectURL(f),im=new Image();
+      try{await new Promise((res,rej)=>{im.onload=res;im.onerror=rej;im.src=url});setImage(toCanvas(im,im.naturalWidth,im.naturalHeight))}finally{URL.revokeObjectURL(url)}
     }
     S.uploaded=true;showAi();setMode("scale");
+    $("guide").appendChild(document.createTextNode(" This page starts with the rules for the R-1 zoning district. If your lot is in another one, choose it under \"The rules used for this lot\"."));
     if(aiOn())$("guide").appendChild(document.createTextNode(" Or press \"Read survey with AI\" for a first tracing to check. That sends the survey image to an AI service to be read."));
   }catch(err){$("guide").innerHTML="<b>That file could not be read here.</b> Try a photo or screenshot of the survey (PNG or JPG).";}
-});
+}
+$("file").addEventListener("change",e=>{const f=e.target.files[0];e.target.value="";if(f)useFile(f)});
+// Made-up as-built surveys for trying the upload and AI steps (samples/, drawn by tools/make_samples.py).
+document.querySelectorAll("[data-sample]").forEach(b=>b.addEventListener("click",async()=>{
+  try{const r=await fetch(b.dataset.sample);if(!r.ok)throw new Error("HTTP "+r.status);
+    await useFile(new File([await r.blob()],b.dataset.sample.split("/").pop(),{type:"image/jpeg"}))}
+  catch(e){console.error(e);$("tools").open=true;$("guide").innerHTML="<b>That sample could not be loaded.</b> Try again in a minute."}}));
 
 /* ---------- AI reads the survey ---------- */
 // "Read survey with AI" sends the survey image to the survey reader (lambda/handler.py),
@@ -253,33 +298,41 @@ function showAi(){$("ai").hidden=!(aiOn()&&S.uploaded)}
 const AI_MAX_BYTES=1400000;   // the reader refuses more than 1.5 MB
 function applyAI(o){
   const P=q=>({x:Math.max(0,Math.min(1000,+q[0]))*S.iw/1000,y:Math.max(0,Math.min(1000,+q[1]))*S.ih/1000}),poly=a=>Array.isArray(a)&&a.length>=3&&a.every(q=>Array.isArray(q)&&isFinite(q[0])&&isFinite(q[1]))?a.map(P):null;
+  const shapes=a=>(Array.isArray(a)?a:[]).filter(x=>x&&typeof x==="object");
+  // read the whole answer before changing anything, so a bad one leaves the drawing as it was
+  if(!o||typeof o!=="object")throw new Error("no answer");
   const lot=poly(o.lot);if(!lot)throw new Error("no lot");
-  S.lot=lot;S.lotClosed=true;S.draft=[];S.types=autoTypes(S.lot,o.front_edge);(o.alley_edges||[]).forEach(i=>{if(Number.isInteger(i)&&i>=0&&i<lot.length&&S.types[i]!=="front")S.types[i]="alley"});
-  S.bldgs=(o.buildings||[]).map(b=>poly(b.pts)).filter(Boolean);
-  S.nb=(o.no_build||[]).map(z=>({pts:poly(z.pts),label:String(z.label||"No-build area").slice(0,40)})).filter(z=>z.pts);
-  const sc=o.scale;let scaled=false;if(sc&&Array.isArray(sc.p1)&&Array.isArray(sc.p2)&&sc.feet>0){const a=P(sc.p1),b=P(sc.p2),d=Math.hypot(a.x-b.x,a.y-b.y);if(d>5){S.ftPerPx=sc.feet/d;scaled=true}}
-  if(typeof o.zoning==="string"&&DIST[o.zoning.trim().toUpperCase()]){$("dist").value=o.zoning.trim().toUpperCase();$("dist").dispatchEvent(new Event("change"))}
-  const c=cen(lot);S.adu.x=c.x;S.adu.y=c.y;S.mapDirty=true;
+  const bldgs=shapes(o.buildings).map(b=>poly(b.pts)).filter(Boolean),nb=shapes(o.no_build).map(z=>({pts:poly(z.pts),label:String(z.label||"No-build area").slice(0,40)})).filter(z=>z.pts);
+  // the gate goes down first: nothing below may show a result for a tracing nobody has checked
   S.unconfirmed=true;$("aiOk").hidden=false;
+  S.lot=lot;S.lotClosed=true;S.draft=[];S.bldgs=bldgs;S.nb=nb;S.bldgArea=null;
+  S.types=autoTypes(S.lot,o.front_edge);(Array.isArray(o.alley_edges)?o.alley_edges:[]).forEach(i=>{if(Number.isInteger(i)&&i>=0&&i<lot.length&&S.types[i]!=="front")S.types[i]="alley"});
+  const sc=o.scale;let scaled=false;if(sc&&Array.isArray(sc.p1)&&Array.isArray(sc.p2)&&sc.feet>0){const a=P(sc.p1),b=P(sc.p2),d=Math.hypot(a.x-b.x,a.y-b.y);if(d>5){S.ftPerPx=sc.feet/d;scaled=true}}
+  // surveys print the district in many ways ("R-6", "R6", "ZONING: R-6 (example)"): take the district out of it
+  const z=typeof o.zoning==="string"?normZone((o.zoning.toUpperCase().match(/[A-Z]+-?\d+[A-Z]?/)||[""])[0]):"";
+  if(DIST[z])setDistrict(z);
+  const c=cen(lot);S.adu.x=c.x;S.adu.y=c.y;S.mapDirty=true;
   if(!scaled){setMode("scale");$("guide").innerHTML="<b>The AI traced the lot but could not read a length.</b> Click the two ends of a line with a printed length, then type it. Then check the tracing and press \"This tracing looks right\"."}
   else{setMode("place");
     $("guide").innerHTML="<b>The AI made a first tracing. Check it before anything else.</b> Compare the blue lot lines, the numbered buildings and the orange areas with your survey. Fix anything that is off with steps 1 to 4, then press \"This tracing looks right\"."}
   if(o.notes)$("guide").appendChild(document.createTextNode(" Note from the AI: "+String(o.notes).slice(0,300)))}
-$("aiOk").addEventListener("click",()=>{S.unconfirmed=false;$("aiOk").hidden=true;S.mapDirty=true;setMode("place");placeBest()});
-$("ai").addEventListener("click",async()=>{if(!aiOn()||!S.img||!S.uploaded)return;const btn=$("ai");btn.disabled=true;btn.textContent="Reading the survey… this can take half a minute";
+$("aiOk").addEventListener("click",()=>{S.unconfirmed=false;$("aiOk").hidden=true;S.mapDirty=true;setMode("place");placeBest();cv.focus({preventScroll:true})});
+$("ai").addEventListener("click",async()=>{if(!aiOn()||!S.img||!S.uploaded)return;const btn=$("ai"),img=S.img;btn.disabled=true;btn.textContent="Reading the survey… this can take half a minute";
   const by="trace the survey by hand with steps 1 to 4.";
   try{let blob=null;for(const q of [0.9,0.75,0.6]){blob=await new Promise(r=>S.img.toBlob(r,"image/jpeg",q));if(blob&&blob.size<=AI_MAX_BYTES)break}
     if(!blob||blob.size>AI_MAX_BYTES)throw {code:"too_large"};
     const b64=await new Promise((res,rej)=>{const fr=new FileReader();fr.onload=()=>res(String(fr.result).split(",")[1]);fr.onerror=rej;fr.readAsDataURL(blob)});
     const r=await fetch(SURVEY_READER.url,{method:"POST",headers:{"content-type":"application/json","x-api-key":SURVEY_READER.key},body:JSON.stringify({image:b64})});
     const d=await r.json().catch(()=>({}));
-    if(!r.ok)throw {code:d.error||(r.status===429?"limit":"failed")};
+    // errors raised by the gateway itself carry no code of ours: over quota or throttled is 429, timed out is 504
+    if(!r.ok)throw {code:d.error||(r.status===429?"limit":r.status===504?"slow":"failed")};
+    if(S.img!==img)return;   // another survey or an address was loaded while this one was being read
     applyAI(d)}
-  catch(e){const c=e&&e.code;console.error(e);
+  catch(e){const c=e&&e.code;console.error(e);if(S.img!==img)return;
     $("guide").innerHTML=c==="limit"||c==="busy"?"<b>The AI reader has reached its limit for now.</b> Try again later, or "+by
       :c==="slow"?"<b>Reading the survey took too long.</b> Try once more, or "+by
       :"<b>The AI could not read this survey.</b> You can "+by}
-  btn.disabled=false;btn.textContent="Read survey with AI"});
+  finally{btn.disabled=false;btn.textContent="Read survey with AI"}});
 
 /* ---------- address lookup from Municipality of Anchorage GIS (public ArcGIS REST, see data.js) ---------- */
 // data.js needs Turf.js from a CDN. It is loaded on first use so the rest of the page works without it.
@@ -341,7 +394,7 @@ function sunText(){const s=S.site;
   return "At "+when+" the sun is "+f1(sun.alt)+"° above the horizon, to the "+compass(sun.az)+". A "+ht+" ft tall ADU casts a shadow about "+Math.round(o.len).toLocaleString()+" ft long, toward the "+compass(sun.az+180)+"."
     +(o.len>SHADOW_MAX_FT?" Shadows are drawn no longer than "+SHADOW_MAX_FT+" ft.":"")
     +(miss?" "+miss+" of the "+s.around.length+" buildings within 300 ft have no mapped height, so they cast no shadow here.":"")}
-function sunUpdate(){$("sunTimeV").textContent=clock(+$("sunTime").value);$("sunMsg").textContent=sunText();draw()}
+function sunUpdate(){$("sunTimeV").textContent=clock(+$("sunTime").value);$("sunTime").setAttribute("aria-valuetext",clock(+$("sunTime").value));$("sunMsg").textContent=sunText();draw()}
 $("sunDate").value=todayIn(TZ);
 ["sunOn","sunDate","sunTime","aduH"].forEach(id=>$(id).addEventListener("input",sunUpdate));
 document.querySelectorAll("[data-sunday]").forEach(b=>b.addEventListener("click",()=>{const t=todayIn(TZ);$("sunDate").value=b.dataset.sunday==="today"?t:t.slice(0,4)+"-"+b.dataset.sunday;sunUpdate()}));
@@ -357,7 +410,7 @@ $("closeAll").addEventListener("click",()=>cards().forEach(d=>{d.open=false}));
 // three.js from a CDN the first time "3D view" is pressed). Only after an address lookup.
 // It shows what the drawing shows: the same buildings, heights, sun and ADU. The ADU is
 // moved on the flat drawing, not here. Nothing in it is part of the plan check.
-let v3=null;
+let v3=null,v3busy=false;
 const EYE_FT=5.5,UPPER_EYE_FT=15.5;   // eye height standing on the ground floor, and on an upper floor
 const tmsg=t=>{$("threeMsg").textContent=t};
 const V3TEXT={overview:"From above.",street:"From the street, at eye height.",adu:""};
@@ -387,9 +440,10 @@ function view3d(name){if(!v3)return;const k=S.ftPerPx;
 const V3NOTE="Blocks only: flat ground, flat roofs, no trees or fences. Paler buildings have no mapped height and are drawn 12 ft tall. Tick \"Show shadows\" to see the sun. To move the ADU, switch 3D view off.";
 async function show3d(on){const btn=$("view3d"),box=$("three");
   if(!on||!S.site||!S.site.around){S.three=false;box.hidden=true;btn.setAttribute("aria-pressed","false");$("v3kinds").hidden=true;tmsg(on&&S.site?"The buildings around this lot could not be loaded, so the 3D view is not available for it.":"");return}
-  if(!v3){tmsg("Getting the 3D view…");const s=S.site;
+  if(!v3){if(v3busy)return;v3busy=true;tmsg("Getting the 3D view…");const s=S.site;
     try{const m=await import("./view3d.js");box.hidden=false;v3=m.createView(box)}
     catch(e){console.error(e);box.hidden=true;tmsg("The 3D view could not start in this browser. The drawing and the shadows still work.");return}
+    finally{v3busy=false}
     if(S.site!==s){box.hidden=true;tmsg("");return}}   // another address or survey was loaded meanwhile
   S.three=true;box.hidden=false;btn.setAttribute("aria-pressed","true");$("v3kinds").hidden=false;
   // bring the sun controls up beside the model: close the other sections on the right
@@ -441,7 +495,8 @@ function sceneFromGIS(info,site){
   $("street").href=site.center?"https://www.google.com/maps/@?api=1&map_action=pano&viewpoint="+site.center.lat.toFixed(6)+","+site.center.lon.toFixed(6)
     :"https://www.google.com/maps/search/?api=1&query="+encodeURIComponent((info.addr||"")+", Anchorage, AK");
   applyFrontage();
-  const z=normZone(info.zone);if(DIST[z]){$("dist").value=z;const d=DIST[z];$("rFront").value=d[0];$("rSide").value=d[1];$("rRear").value=d[2];$("rCov").value=d[3]}
+  // a district this page has no rules for must not be checked with another district's numbers
+  const z=normZone(info.zone);if(DIST[z])setDistrict(z);else{$("dist").value="Custom";S.needRules=info.zone||"(blank)"}
   const ce=cen(S.lot);S.adu.x=ce.x;S.adu.y=ce.y;S.mapDirty=true;setMode("place");
   placeBest();
   const gd=$("guide");gd.innerHTML="<b>This is your lot from the Municipality's map.</b> ";
@@ -464,26 +519,32 @@ async function lookupFlags(p){
     if(r.tick===true)box.checked=true;else if(r.tick===false)box.checked=false;
     const t=r.text+(r.source?" Source: "+r.source+".":"");$("src-"+k).textContent=t;S.flagNotes.push(FLAGNAME[k]+": "+t)});
   flags()}
-async function loadParcel(p){const btn=$("addrGo");btn.disabled=true;$("addrPick").innerHTML="";amsg("Found "+p.addr+". Getting the lot lines, buildings and streets…");
-  try{const d=await data(),site=await d.loadSite(p);sceneFromGIS({pid:p.pid,addr:p.addr,zone:p.zone,lotSize:p.lotSize},site);lookupFlags(p);
+async function loadParcel(p){const btn=$("addrGo"),seq=++loadSeq;btn.disabled=true;$("addrPick").innerHTML="";amsg("Found "+p.addr+". Getting the lot lines, buildings and streets…");
+  try{const d=await data(),site=await d.loadSite(p);
+    if(seq!==loadSeq)return;   // a survey or another address was loaded while this one was on its way
+    sceneFromGIS({pid:p.pid,addr:p.addr,zone:p.zone,lotSize:p.lotSize},site);lookupFlags(p);
     const n=S.bldgs.length,lotA=S.site.lotA;
     amsg("Found "+p.addr+". The map shows "+n+" building"+(n===1?"":"s")+" covering about "+Math.round(site.bldgArea/lotA*100)+"% of the lot ("+Math.round(site.bldgArea).toLocaleString()+" sq ft of buildings on a "+Math.round(lotA).toLocaleString()+" sq ft lot)."
       +(p.lotSize>0&&Math.abs(p.lotSize-lotA)/lotA>0.01?" The assessor lists the lot as "+Number(p.lotSize).toLocaleString()+" sq ft; this page uses the mapped outline.":"")
       +(p.parts>1?" This parcel has "+p.parts+" separate pieces; only the largest is drawn.":""));
-  }catch(e){console.error(e);amsg("Your lot was found but the map data did not load. Try again in a minute, or upload a survey.")}
-  btn.disabled=false}
-async function lookup(){const q=$("addr").value.trim();if(!q)return;const btn=$("addrGo"),pick=$("addrPick");btn.disabled=true;pick.innerHTML="";amsg("Looking up your lot…");
+    cv.focus({preventScroll:true});
+  }catch(e){console.error(e);if(seq===loadSeq)amsg("Your lot was found but the map data did not load. Try again in a minute, or upload a survey.")}
+  finally{btn.disabled=false}}
+async function lookup(){const q=$("addr").value.trim(),btn=$("addrGo"),pick=$("addrPick");if(!q||btn.disabled)return;const seq=++loadSeq;btn.disabled=true;pick.innerHTML="";amsg("Looking up your lot…");
   let list;
   try{const d=await data();list=await d.findParcels(q)}
-  catch(e){console.error(e);amsg("Address lookup could not reach the Municipality's map service. Try again in a minute, or upload a survey.");btn.disabled=false;return}
+  catch(e){console.error(e);if(seq===loadSeq)amsg("Address lookup could not reach the Municipality's map service. Try again in a minute, or upload a survey.");btn.disabled=false;return}
   btn.disabled=false;
+  if(seq!==loadSeq){amsg("");return}   // a survey was loaded while the address was being looked up
   if(!list.length){amsg("No lot found at that address. Try the short street type, like 123 W 10TH AVE.");return}
   const Q=q.toUpperCase().replace(/\s+/g," "),exact=list.filter(p=>p.addr===Q);
   if(list.length===1||exact.length===1){loadParcel(exact[0]||list[0]);return}
   amsg(list.length+(list.more?" or more":"")+" lots match. Pick yours"+(list.more?", or type more of the address":"")+".");
   list.forEach(p=>pick.appendChild(btnEl(p.addr+"  (parcel "+p.pid+")",()=>loadParcel(p))));
 }
-$("addrGo").addEventListener("click",lookup);$("addr").addEventListener("keydown",e=>{if(e.key==="Enter")lookup()});
+$("addrGo").addEventListener("click",lookup);
+// "Try an example" fills in the address from config.js and looks it up
+if(EXAMPLE_ADDRESS){const b=$("addrEx");b.hidden=false;b.textContent="Try an example: "+EXAMPLE_ADDRESS;b.addEventListener("click",()=>{$("addr").value=EXAMPLE_ADDRESS;lookup()})}$("addr").addEventListener("keydown",e=>{if(e.key==="Enter")lookup()});
 
 /* ---------- sample survey (made up) ---------- */
 function sample(){

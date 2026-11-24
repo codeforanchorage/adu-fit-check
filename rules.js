@@ -9,7 +9,8 @@ import {area,inside,polySeg,polyPoly,crosses,closest,f1} from "./geometry.js";
 
 export const TYPES=["front","side","rear","alley"];
 export const TNAME={front:"Front",side:"Side",rear:"Rear",alley:"Alley"};
-export const L=i=>String.fromCharCode(65+i%26);
+// A, B, ... Z, then AA, AB, ... so a lot with many lines never repeats a letter
+export const L=i=>(i>=26?String.fromCharCode(64+Math.floor(i/26)):"")+String.fromCharCode(65+i%26);
 
 // AMC 21.06.020, Table 21.06-1,
 // rows for a single-family detached dwelling, Anchorage Bowl only.
@@ -34,11 +35,13 @@ export function reqFor(t,R){return t==="front"?R.front:t==="rear"?R.rear:t==="al
 // Label lot lines from one front line: the front, the line most parallel to it as rear,
 // the rest as side. With no front given, the line lowest on the drawing is the front.
 // AMC 21.15.040: the rear lot line is the boundary most parallel to the front lot line
-// that does not intersect it.
+// that does not intersect it. So a line that meets the front line at a corner is never a
+// rear, however nearly parallel it is: a front line traced with a bend in it would otherwise
+// have its other half checked at the smaller rear setback.
 export function autoTypes(lot,front){const n=lot.length,mid=i=>({x:(lot[i].x+lot[(i+1)%n].x)/2,y:(lot[i].y+lot[(i+1)%n].y)/2});
   let fi=0;for(let i=1;i<n;i++)if(mid(i).y>mid(fi).y)fi=i;if(Number.isInteger(front)&&front>=0&&front<n)fi=front;
   const ang=i=>{const a=lot[i],b=lot[(i+1)%n];return Math.atan2(b.y-a.y,b.x-a.x)};
-  return lot.map((_,i)=>{if(i===fi)return "front";let d=Math.abs(ang(i)-ang(fi))%Math.PI;d=Math.min(d,Math.PI-d);return d<Math.PI/4?"rear":"side"})}
+  return lot.map((_,i)=>{if(i===fi)return "front";const meets=i===(fi+1)%n||i===(fi+n-1)%n;let d=Math.abs(ang(i)-ang(fi))%Math.PI;d=Math.min(d,Math.PI-d);return d<Math.PI/4&&!meets?"rear":"side"})}
 
 // Label lot lines from what the map says is outside each one (geometry.js classifyEdges).
 //

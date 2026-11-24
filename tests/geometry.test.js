@@ -106,3 +106,21 @@ describe("classifyEdges: what is outside each lot line",()=>{
     expect(e.filter(x=>x.kind==="street")).toHaveLength(1);expect(e.filter(x=>x.kind==="alley")).toHaveLength(1);
   });
 });
+
+describe("clean on a curved lot line (a cul-de-sac)",()=>{
+  // a lot whose street side is an arc of radius 50 ft, digitised every `step` feet along the arc
+  const arcLot=step=>{const pts=[],n=Math.round(Math.PI*50/2/step);for(let i=0;i<=n;i++){const t=Math.PI/2*i/n;pts.push(P(50*Math.cos(t),50*Math.sin(t)))}return pts.concat([P(0,120),P(120,120),P(120,0)])};
+  const off=(orig,out)=>Math.max(...orig.map(p=>Math.min(...out.map((a,i)=>ptSeg(p,a,out[(i+1)%out.length])))));
+  for(const step of [2,1,0.5,0.25]){
+    it("never moves the outline by more than 0.3 ft, with a point every "+step+" ft",()=>{
+      const lot=arcLot(step),out=clean(lot);
+      expect(off(lot,out)).toBeLessThan(0.3);
+      expect(Math.abs(area(out)-area(lot))/area(lot)).toBeLessThan(0.005);   // lot area, and so lot coverage, barely changes
+      expect(out.length).toBeLessThan(lot.length+1);expect(out.length).toBeGreaterThan(6);       // still a curve, not three points
+    });
+  }
+  it("still makes one edge of a straight line drawn with many points",()=>{
+    const line=[];for(let x=0;x<=60;x+=0.5)line.push(P(x,0));
+    expect(clean(line.concat([P(60,125),P(0,125)]))).toHaveLength(4);
+  });
+});

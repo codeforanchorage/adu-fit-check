@@ -21,6 +21,9 @@ LIVE = "https://www.brendanbabb.com/experiments/adu-fit/"
 # stay out. If index.html or a module starts loading another local file, add it here.
 FILES = ["index.html", "ui.js", "geometry.js", "rules.js", "data.js", "sun.js", "view3d.js", "config.js", "plans.json"]
 
+# Files copied as they are, keeping their folder: the made-up sample surveys (tools/make_samples.py).
+ASSETS = ["samples/sample-city-lot-alley.jpg", "samples/sample-corner-lot.jpg", "samples/sample-large-lot-septic.jpg"]
+
 README = """How to put these on DreamHost
 =============================
 
@@ -28,7 +31,7 @@ README = """How to put these on DreamHost
    web directory:
 
      - Panel > Files > File Manager: drag the whole folder's contents in, or
-     - SFTP/SSH:  scp index.html *.js plans.json README-UPLOAD.txt user@server.dreamhost.com:~/yourdomain.com/experiments/adu-fit/
+     - SFTP/SSH:  scp -r index.html *.js plans.json samples README-UPLOAD.txt user@server.dreamhost.com:~/yourdomain.com/experiments/adu-fit/
 
    The page has no dependency on its location: every path in it is relative.
    It needs no PHP and no database.
@@ -95,12 +98,19 @@ def build():
         for other in ("ui.js", "geometry.js", "rules.js", "data.js", "sun.js", "view3d.js", "config.js", "plans.json"):
             if ('"./' + other in text or 'src="' + other in text) and other not in FILES:
                 sys.exit(f"{name} loads {other}, which is not in FILES")
+    for name in ASSETS:
+        src = os.path.join(BASE, name)
+        if not os.path.isfile(src):
+            sys.exit(f"missing {name}")
+        os.makedirs(os.path.dirname(os.path.join(DEPLOY, name)), exist_ok=True)
+        shutil.copyfile(src, os.path.join(DEPLOY, name))
+        sums.append(f"   {md5(open(src, 'rb').read())}  {name}")
     if stamped < 11:
         sys.exit(f"only {stamped} script references were stamped; expected at least 11. Has the way scripts are loaded changed?")
     print(f"version stamp {stamp} on {stamped} script references")
     open(os.path.join(DEPLOY, "README-UPLOAD.txt"), "w", encoding="utf-8", newline="\n").write(
         README.format(live=LIVE, sums="\n".join(sums)))
-    print(f"-> {DEPLOY}  ({len(FILES)} files + README-UPLOAD.txt)")
+    print(f"-> {DEPLOY}  ({len(FILES)} files, {len(ASSETS)} images + README-UPLOAD.txt)")
     print("\n".join(sums))
     print(f"\nUpload the folder's contents to experiments/adu-fit/, then run:  python build_deploy.py --verify")
 
@@ -111,7 +121,7 @@ def verify(url):
     if not os.path.isdir(DEPLOY):
         sys.exit("deploy_dreamhost/ does not exist. Run  python build_deploy.py  first.")
     bad = 0
-    for name in FILES:
+    for name in FILES + ASSETS:
         local = md5(open(os.path.join(DEPLOY, name), "rb").read())
         try:
             req = urllib.request.Request(url + name, headers={"User-Agent": "adu-fit-check-deploy-check", "Cache-Control": "no-cache"})
