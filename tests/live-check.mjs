@@ -2,9 +2,9 @@
 // Not part of `npm test` (it needs the network). Usage:
 //   node tests/live-check.mjs "1400 W 23RD AVE" ["another address" ...]
 // Prints what the page would draw and the plan-check table for a 20 x 30 ft ADU at the best spot.
-import {findParcels,loadSite} from "../data.js";
+import {findParcels,loadSite,loadFlags} from "../data.js";
 import {area,clean,openRing,classifyEdges,rectPoly,inside,f1} from "../geometry.js";
-import {DIST,L,check,margin,maxAduArea,typesFromEdges,normZone} from "../rules.js";
+import {DIST,L,check,margin,maxAduArea,typesFromEdges,normZone,flagResults} from "../rules.js";
 
 for(const q of process.argv.slice(2)){
   console.log("\n=== "+q);
@@ -21,6 +21,8 @@ for(const q of process.argv.slice(2)){
   const fr=typesFromEdges(lot,edges),n=lot.length;
   lot.forEach((a,i)=>{const b=lot[(i+1)%n];console.log("  line "+L(i)+"  "+f1(Math.hypot(b.x-a.x,b.y-a.y)).padStart(6)+" ft  "+edges[i].kind.padEnd(8)+" "+(edges[i].label||"").padEnd(16)+" -> "+fr.types[i])});
   console.log("streets: "+(fr.streets.join(", ")||"none")+(fr.multi?"  MORE THAN ONE STREET SIDE: full front setback on each, no rear (AMC 21.06.030C.4)":""));
+  const fl=flagResults(await loadFlags(p));
+  for(const k of ["seis","flood","slope","septic"])console.log("  flag "+k.padEnd(7)+(fl[k].tick===true?"TICK ":fl[k].tick===false?"clear":"?    ")+" "+fl[k].text+(fl[k].source?" ["+fl[k].source+"]":""));
   const d=DIST[normZone(p.zone)];if(!d){console.log("district not in DIST: setbacks by hand");continue}
   const S={ftPerPx:1,lot,types:fr.types,bldgs:site.bldgs.map(b=>openRing(b.pts)),nb:[],bldgArea:site.bldgArea,adu:{w:20,d:30,rot:0}};
   const R={front:d[0],side:d[1],rear:d[2],cov:d[3],sep:0,tall:false,maxA:maxAduArea(0),house:0};

@@ -1,6 +1,6 @@
 import {describe,it,expect} from "vitest";
 import {readFileSync} from "node:fs";
-import {addressWhere,ringsToPolygons,clipToLot,SR} from "../data.js";
+import {addressWhere,ringsToPolygons,clipToLot,distToPolygons,SR} from "../data.js";
 
 // Esri rings: outer clockwise (with y up), holes counter-clockwise, closed.
 const cw=(x0,y0,x1,y1)=>[[x0,y0],[x0,y1],[x1,y1],[x1,y0],[x0,y0]];
@@ -22,6 +22,9 @@ describe("privacy",()=>{
     const src=readFileSync(new URL("../data.js",import.meta.url),"utf8").split("\n").filter(l=>!l.trim().startsWith("//")).join("\n");
     expect(src).not.toMatch(/Owner_|Mailing/i);
     expect(src).not.toMatch(/outFields:\s*"\*"/);
+    // the AWWU layer holds owner names and mailing addresses: only Service_Type may be asked for
+    const awwu=[...src.matchAll(/query\(LAYERS\.awwu,\{[^}]*outFields:"([^"]*)"/g)].map(m=>m[1]);
+    expect(awwu).toEqual(["Service_Type"]);
   });
   it("uses a projected system, not Web Mercator",()=>{
     expect([3857,102100,4326]).not.toContain(SR);
@@ -63,5 +66,26 @@ describe("clipToLot",()=>{
   it("largest first",()=>{
     const r=clipToLot(lot,[[cw(0,0,10,10)],[cw(20,20,50,60)]]);
     expect(r.map(x=>Math.round(x.area))).toEqual([1200,100]);
+  });
+});
+
+describe("distToPolygons (flood zone distance)",()=>{
+  const B=(x0,y0,x1,y1)=>[{x:x0,y:y0},{x:x1,y:y0},{x:x1,y:y1},{x:x0,y:y1}];
+  const lot=B(0,0,60,125);
+  it("distance to a polygon that is apart",()=>{
+    expect(distToPolygons(lot,[[B(360,0,500,125)]])).toBe(300);
+    expect(distToPolygons(lot,[[B(361,0,500,125)]])).toBe(301);
+    expect(distToPolygons(lot,[[B(900,0,950,10)],[B(100,0,200,10)]])).toBe(40);   // nearest of several
+  });
+  it("0 when the zone crosses the lot, covers it, or sits inside it",()=>{
+    expect(distToPolygons(lot,[[B(50,50,200,60)]])).toBe(0);
+    expect(distToPolygons(lot,[[B(-100,-100,300,300)]])).toBe(0);
+    expect(distToPolygons(lot,[[B(20,20,30,30)]])).toBe(0);
+  });
+  it("a lot inside a hole in the zone is outside the zone",()=>{
+    expect(distToPolygons(lot,[[B(-500,-500,600,600),B(-50,-40,110,165)]])).toBe(40);
+  });
+  it("no polygons",()=>{
+    expect(distToPolygons(lot,[])).toBe(Infinity);
   });
 });

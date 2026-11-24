@@ -1,6 +1,6 @@
 import {describe,it,expect} from "vitest";
 import {rectPoly} from "../geometry.js";
-import {DIST,check,margin,reqFor,maxAduArea,normZone,autoTypes,typesFromEdges} from "../rules.js";
+import {DIST,check,margin,reqFor,maxAduArea,normZone,autoTypes,typesFromEdges,flagResults,fmtDate,FLAG_RULES} from "../rules.js";
 
 const P=(x,y)=>({x,y});
 const box=(x0,y0,x1,y1)=>[P(x0,y0),P(x1,y0),P(x1,y1),P(x0,y1)];
@@ -234,5 +234,56 @@ describe("quick mode (the fit map)",()=>{
 describe("DIST: every district has four numbers",()=>{
   it("front, side, rear, coverage",()=>{
     for(const k of Object.keys(DIST)){expect(DIST[k]).toHaveLength(4);DIST[k].forEach(n=>expect(n).toBeGreaterThan(0))}
+  });
+});
+
+describe("other reviews from map layers (Pre-Approved ADU Plans permit checklist, March 2026)",()=>{
+  const D=Date.UTC(2019,10,15);
+  const base=()=>({seis:{code:2,type:"MODERATE-LOW",date:D},flood:{onLot:[],near:[],date:D},slope:{pct:7.75,date:D},awwu:{service:"Has Active Water and Sewer Service",date:D}});
+  it("thresholds",()=>{
+    expect(FLAG_RULES).toEqual({seismicCodes:[4,5],floodBufferFt:300,slopeOverPct:20});
+  });
+  it("nothing found: seismic, flood and slope unticked, with the source and its date",()=>{
+    const r=flagResults(base());
+    expect(r.seis.tick).toBe(false);expect(r.seis.text).toBe("Map: seismic zone 2 (moderate low). Only zones 4 and 5 need the report.");
+    expect(r.seis.source).toContain("15 Nov 2019");
+    expect(r.flood.tick).toBe(false);expect(r.slope.tick).toBe(false);expect(r.slope.text).toBe("Map: average slope 7.8%.");
+  });
+  it("seismic zone 4 or 5 ticks; zone 3 does not",()=>{
+    const f=base();
+    f.seis.code=3;expect(flagResults(f).seis.tick).toBe(false);
+    f.seis.code=4;expect(flagResults(f).seis.tick).toBe(true);
+    f.seis.code=5;f.seis.type="VERY-HIGH";const r=flagResults(f).seis;expect(r.tick).toBe(true);expect(r.text).toBe("Map: seismic zone 5 (very high).");
+  });
+  it("flood: on the lot, within 300 ft, and the 500 year area",()=>{
+    const f=base();
+    f.flood={onLot:["100 Year Floodplain"],near:["100 Year Floodplain","Floodway"],date:D};
+    expect(flagResults(f).flood).toMatchObject({tick:true,text:"Map: part of this lot is in the 100 Year Floodplain."});
+    f.flood={onLot:[],near:["Floodway"],date:D};
+    expect(flagResults(f).flood).toMatchObject({tick:true,text:"Map: this lot is within 300 ft of the Floodway."});
+    f.flood={onLot:["500 Year Floodplain"],near:["500 Year Floodplain"],date:D};
+    const r=flagResults(f).flood;expect(r.tick).toBe(false);expect(r.text).toContain("does not tick the box for the 500 year area");
+    f.flood={onLot:["500 Year Floodplain"],near:["500 Year Floodplain","100 Year Floodplain"],date:D};
+    expect(flagResults(f).flood.tick).toBe(true);
+  });
+  it("slope: over 20% ticks, exactly 20% does not, missing leaves the box alone",()=>{
+    const f=base();
+    f.slope.pct=20;expect(flagResults(f).slope.tick).toBe(false);
+    f.slope.pct=20.1;expect(flagResults(f).slope.tick).toBe(true);
+    f.slope.pct=null;expect(flagResults(f).slope.tick).toBe(null);
+  });
+  it("well and septic is never ticked from the map",()=>{
+    const f=base();
+    for(const s of ["Has Active Water and Sewer Service","Has Access to Sewer Utilities Only","Service Status Not Evaluated",null]){f.awwu.service=s;expect(flagResults(f).septic.tick).toBe(null)}
+    f.awwu.service="Has Access to Sewer Utilities Only";expect(flagResults(f).septic.text).toContain("Confirm with AWWU");
+  });
+  it("a lookup that failed leaves its box alone and does not stop the others",()=>{
+    const f=base();f.seis={error:true};f.flood={error:true};f.awwu={error:true};
+    const r=flagResults(f);
+    expect(r.seis.tick).toBe(null);expect(r.flood.tick).toBe(null);expect(r.septic.tick).toBe(null);expect(r.slope.tick).toBe(false);
+    expect(flagResults({}).slope.tick).toBe(null);
+  });
+  it("fmtDate",()=>{
+    expect(fmtDate(D)).toBe("15 Nov 2019");expect(fmtDate(null)).toBe("date not given");
   });
 });

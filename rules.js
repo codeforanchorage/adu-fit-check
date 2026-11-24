@@ -114,3 +114,54 @@ export function check(scene,poly,R,quick){
 export function margin(scene,poly,R){const S=scene,f=S.ftPerPx;let m=Infinity;
   for(let i=0;i<S.lot.length;i++)m=Math.min(m,polySeg(poly,S.lot[i],S.lot[(i+1)%S.lot.length])*f-reqFor(S.types[i],R));
   S.bldgs.forEach(b=>m=Math.min(m,polyPoly(poly,b)*f-R.sep));S.nb.forEach(z=>m=Math.min(m,polyPoly(poly,z.pts)*f));return m}
+
+// ---------- other reviews this lot may need ----------
+// Source for every threshold below: Municipality of Anchorage, Pre-Approved ADU Plans permit
+// checklist (March 2026), www.muni.org/ADU.
+//   Geotechnical report: seismic hazard zone 4 or 5
+//   Flood review: in a flood zone or within 300 ft of one
+//   Steep slope: average lot slope over 20%
+//   Well and septic review: lot on a well or septic system
+export const FLAG_RULES={seismicCodes:[4,5],floodBufferFt:300,slopeOverPct:20};
+
+const MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+export function fmtDate(ms){if(typeof ms!=="number"||!isFinite(ms))return "date not given";const d=new Date(ms);return d.getUTCDate()+" "+MON[d.getUTCMonth()]+" "+d.getUTCFullYear()}
+
+// Turn the map lookups (data.js loadFlags) into what each checkbox should do.
+// For each of seis, flood, slope, septic: {tick, text, source}
+//   tick true   the map says this review applies: tick the box
+//   tick false  the map says it does not: untick the box
+//   tick null   the map cannot tell: leave the box as the person set it
+// Choices made here, pending word from Development Services:
+//   Flood: the floodway and the 100 Year Floodplain tick the box. The 500 Year Floodplain
+//   is reported but does not tick it; the checklist says "flood zone" without defining it.
+//   Well and septic: never ticked from the map. The AWWU layer records access to and use
+//   of public water and sewer, not whether a lot has a well or septic system.
+export function flagResults(f){
+  const out={},src=(name,date)=>name+", data dated "+fmtDate(date);
+  // seismic
+  const s=f.seis||{error:true};
+  if(s.error)out.seis={tick:null,text:"The seismic zone map could not be read. Tick this yourself if it applies.",source:""};
+  else if(s.code==null)out.seis={tick:null,text:"The seismic zone map shows no zone for this lot.",source:src("MOA Seismic Zones map layer (titled historical)",s.date)};
+  else{const yes=FLAG_RULES.seismicCodes.includes(s.code);
+    out.seis={tick:yes,text:"Map: seismic zone "+s.code+(s.type?" ("+String(s.type).toLowerCase().replace(/-/g," ")+")":"")+"."+(yes?"":" Only zones 4 and 5 need the report."),source:src("MOA Seismic Zones map layer (titled historical)",s.date)}}
+  // flood
+  const fl=f.flood||{error:true},strong=z=>z==="Floodway"||z==="100 Year Floodplain",list=a=>a.slice().sort().join(" and ");
+  if(fl.error)out.flood={tick:null,text:"The flood map could not be read. Tick this yourself if it applies.",source:""};
+  else{const fsrc=src("FEMA flood hazard areas as held by MOA",fl.date),on=fl.onLot.filter(strong),near=fl.near.filter(strong),has500=fl.near.includes("500 Year Floodplain");
+    if(on.length)out.flood={tick:true,text:"Map: part of this lot is in the "+list(on)+".",source:fsrc};
+    else if(near.length)out.flood={tick:true,text:"Map: this lot is within "+FLAG_RULES.floodBufferFt+" ft of the "+list(near)+".",source:fsrc};
+    else if(has500)out.flood={tick:false,text:"Map: the 500 Year Floodplain is on or within "+FLAG_RULES.floodBufferFt+" ft of this lot. This page does not tick the box for the 500 year area; ask the flood reviewer whether it counts.",source:fsrc};
+    else out.flood={tick:false,text:"Map: no mapped flood zone on or within "+FLAG_RULES.floodBufferFt+" ft of this lot.",source:fsrc}}
+  // slope
+  const sl=f.slope||{error:true};
+  if(sl.error||sl.pct==null)out.slope={tick:null,text:"The parcel record has no average slope for this lot. Tick this yourself if it applies.",source:""};
+  else out.slope={tick:sl.pct>FLAG_RULES.slopeOverPct,text:"Map: average slope "+f1(sl.pct)+"%.",source:"MOA parcel record, mean percent slope. The record does not say when or how the slope was worked out"};
+  // well and septic
+  const a=f.awwu||{error:true};
+  if(a.error)out.septic={tick:null,text:"The water and sewer record could not be read. Tick this yourself if the lot is on a well or septic system.",source:""};
+  else if(!a.service)out.septic={tick:null,text:"AWWU has no record for this lot. Tick this yourself if the lot is on a well or septic system.",source:src("AWWU properties map layer",a.date)};
+  else if(a.service==="Has Active Water and Sewer Service")out.septic={tick:null,text:"AWWU lists active water and sewer service for this lot. Not ticked from the map.",source:src("AWWU properties map layer",a.date)};
+  else out.septic={tick:null,text:"AWWU lists this lot as \""+a.service+"\". That does not say whether there is a well or septic system. Confirm with AWWU and tick this yourself if it applies.",source:src("AWWU properties map layer",a.date)};
+  return out;
+}

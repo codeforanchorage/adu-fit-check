@@ -5,7 +5,7 @@
 // the page notice, on the drawn sheet and in the copied summary.
 
 import {area,inside,ptSeg,cen,rectPoly,clean,openRing,classifyEdges,f1} from "./geometry.js";
-import {DIST,TYPES,TNAME,L,check,margin,maxAduArea,autoTypes,typesFromEdges,normZone} from "./rules.js";
+import {DIST,TYPES,TNAME,L,check,margin,maxAduArea,autoTypes,typesFromEdges,normZone,flagResults} from "./rules.js";
 
 const $=id=>document.getElementById(id);
 const cv=$("cv"),cx=cv.getContext("2d");
@@ -155,12 +155,12 @@ $("showMap").addEventListener("change",draw);
 document.querySelectorAll(".flag").forEach(c=>c.addEventListener("change",flags));
 $("copy").addEventListener("click",async()=>{const r=S.result;if(!r)return;
   const t=["ADU Fit Check (screening only, not a zoning determination)",...(S.info?["Parcel "+S.info.pid+", "+S.info.addr+". Lot lines and buildings from Municipality of Anchorage GIS, not a survey."]:[]),"ADU footprint: "+S.adu.w+" x "+S.adu.d+" ft, rotated "+S.adu.rot+" degrees","Result: "+(r.ok?"Fits here":"Does not fit here"),
-    ...r.why.map(w=>"- "+w),"","Checks:",...r.rows.map(o=>(o.ok?"OK  ":"NO  ")+o.name+": "+o.m+" (required "+o.r+")"),"","Other reviews:",...(flags().length?flags().map(x=>"- "+x):["- none checked"])].join("\n");
+    ...r.why.map(w=>"- "+w),"","Checks:",...r.rows.map(o=>(o.ok?"OK  ":"NO  ")+o.name+": "+o.m+" (required "+o.r+")"),"","Other reviews:",...(flags().length?flags().map(x=>"- "+x):["- none checked"]),...(S.flagNotes?["","From the map layers (check these; the layers may be out of date):",...S.flagNotes.map(x=>"- "+x)]:[])].join("\n");
   try{await navigator.clipboard.writeText(t);$("copied").textContent="Copied."}catch(err){$("copied").textContent="Copy was blocked by the browser."}
   setTimeout(()=>$("copied").textContent="",2500)});
 
 /* ---------- loading a survey ---------- */
-function setImage(c){S.img=c;S.iw=c.width;S.ih=c.height;S.ftPerPx=null;S.lot=[];S.lotClosed=false;S.types=[];S.bldgs=[];S.nb=[];S.draft=[];S.scalePts=[];S.bldgArea=null;S.info=null;S.site=null;S.mapDirty=true;layout()}
+function setImage(c){S.img=c;S.iw=c.width;S.ih=c.height;S.ftPerPx=null;S.lot=[];S.lotClosed=false;S.types=[];S.bldgs=[];S.nb=[];S.draft=[];S.scalePts=[];S.bldgArea=null;S.info=null;S.site=null;clearFlagNotes();S.mapDirty=true;layout()}
 function toCanvas(src,w,h){const m=1600/Math.max(w,h),k=Math.min(1,m),c=document.createElement("canvas");c.width=Math.round(w*k);c.height=Math.round(h*k);c.getContext("2d").drawImage(src,0,0,c.width,c.height);return c}
 function loadScript(u){return new Promise((res,rej)=>{const s=document.createElement("script");s.src=u;s.onload=res;s.onerror=rej;document.head.appendChild(s)})}
 $("file").addEventListener("change",async e=>{const f=e.target.files[0];if(!f)return;e.target.value="";
@@ -244,8 +244,24 @@ function sceneFromGIS(info,site){
   const gd=$("guide");gd.innerHTML="<b>Loaded from Muni GIS. Check the lot line labels.</b> ";
   gd.appendChild(document.createTextNode(frontageNote()+" To change a label, open step 2 and click it. Building outlines are the Municipality's mapped footprints, cut off at the lot line; they may not show recent construction."+(DIST[z]?"":" Zoning district "+(info.zone||"(blank)")+" is not in the list, so set the setbacks by hand.")));
 }
+// Fill the "other reviews" boxes from map layers (data.js loadFlags, rules.js flagResults).
+// Every box stays editable. A lookup that cannot tell leaves the box alone and says so.
+const FLAGKEYS=["seis","septic","flood","slope"],FLAGNAME={seis:"Seismic",septic:"Well and septic",flood:"Flood",slope:"Slope"};
+function clearFlagNotes(){FLAGKEYS.forEach(k=>{const e=$("src-"+k);if(e)e.textContent=""});S.flagNotes=null}
+async function lookupFlags(p){
+  // a new lot starts with every box clear, including ones ticked by hand for the last lot
+  document.querySelectorAll(".flag").forEach(b=>{b.checked=false});flags();
+  FLAGKEYS.forEach(k=>{$("src-"+k).textContent="Checking the map…"});
+  let res=null;try{const d=await data();res=flagResults(await d.loadFlags(p))}catch(e){console.error(e)}
+  if(!S.info||S.info.pid!==p.pid)return;   // another address or survey was loaded meanwhile
+  if(!res){FLAGKEYS.forEach(k=>{$("src-"+k).textContent="The map lookup did not finish. Tick this yourself if it applies."});return}
+  S.flagNotes=[];
+  FLAGKEYS.forEach(k=>{const r=res[k],box=document.querySelector('.flag[data-k="'+k+'"]');
+    if(r.tick===true)box.checked=true;else if(r.tick===false)box.checked=false;
+    const t=r.text+(r.source?" Source: "+r.source+".":"");$("src-"+k).textContent=t;S.flagNotes.push(FLAGNAME[k]+": "+t)});
+  flags()}
 async function loadParcel(p){const btn=$("addrGo");btn.disabled=true;$("addrPick").innerHTML="";amsg("Found "+p.addr+". Getting the lot lines, buildings and streets…");
-  try{const d=await data(),site=await d.loadSite(p);sceneFromGIS({pid:p.pid,addr:p.addr,zone:p.zone,lotSize:p.lotSize},site);
+  try{const d=await data(),site=await d.loadSite(p);sceneFromGIS({pid:p.pid,addr:p.addr,zone:p.zone,lotSize:p.lotSize},site);lookupFlags(p);
     const n=S.bldgs.length,lotA=S.site.lotA;
     amsg(p.addr+": "+n+" building"+(n===1?"":"s")+" on the lot, "+Math.round(site.bldgArea).toLocaleString()+" sq ft of footprint, "+f1(site.bldgArea/lotA*100)+"% of the "+Math.round(lotA).toLocaleString()+" sq ft mapped lot."
       +(p.lotSize>0&&Math.abs(p.lotSize-lotA)/lotA>0.01?" The assessor lists the lot as "+Number(p.lotSize).toLocaleString()+" sq ft; this page uses the mapped outline.":"")
