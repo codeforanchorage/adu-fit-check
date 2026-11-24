@@ -2,6 +2,7 @@
   "name": "adu-fit-check",
   "version": "0.1.0",
   "description": "Screening tool: where an accessory dwelling unit fits on an Anchorage lot. Not a zoning determination.",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "scripts": {
