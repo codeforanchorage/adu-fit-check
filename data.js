@@ -23,13 +23,16 @@ export const LAYERS={
 };
 
 // Phase 3, aerial photos. The Municipality's own ArcGIS Server, one map service per photo
-// year. Checked against the live services on 2026-11-24: both export in WKID 102634 and
+// year. Checked against the live services on 2026-11-24: they export in WKID 102634 and
 // allow cross-origin requests. The page tries these in order and uses the first that loads.
-// "Photo_2026_Temp" looks like a temporary name; when MOA GIS renames it, change it here.
-// The Municipality's record for the 2026 photo gives no flight dates.
+//
+// Only photos the Municipality has published as a public catalog item are listed. A 2026
+// photo ("Photo_2026_Temp") also answers without a login, but on 2026-11-24 it had no
+// public catalog item, so it is left out until MOA GIS confirms it is meant to be public.
+// To add it then, put this line first:
+//   {url:IMG+"Photo_2026_Temp/MapServer",year:"2026",flown:"in 2026"},
 const IMG="https://www.ancgis.com/arcgis/rest/services/imagery_public/";
 export const AERIALS=[
-  {url:IMG+"Photo_2026_Temp/MapServer",year:"2026",flown:"in 2026"},
   {url:IMG+"Photo_2024/MapServer",year:"2024",flown:"20 May to 15 June 2024"}
 ];
 

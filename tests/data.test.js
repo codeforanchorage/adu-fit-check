@@ -38,11 +38,14 @@ describe("aerial photo request",()=>{
     expect(q.get("bboxSR")).toBe(String(SR));expect(q.get("imageSR")).toBe(String(SR));
     expect(q.get("size")).toBe("1100,1880");expect(q.get("f")).toBe("image");expect(q.get("layers")).toBe("show:0");
   });
-  it("newest photo first, all on the Municipality's server",()=>{
-    expect(AERIALS.length).toBeGreaterThan(1);
+  it("newest photo first, all on the Municipality's server, none that is not published",()=>{
+    expect(AERIALS.length).toBeGreaterThan(0);
     AERIALS.forEach(a=>expect(a.url.startsWith("https://www.ancgis.com/arcgis/rest/services/imagery_public/")).toBe(true));
-    expect(Number(AERIALS[0].year)).toBeGreaterThan(Number(AERIALS[1].year));
+    for(let i=1;i<AERIALS.length;i++)expect(Number(AERIALS[i-1].year)).toBeGreaterThan(Number(AERIALS[i].year));
+    // left out until MOA GIS confirms it is meant to be public (see data.js)
+    AERIALS.forEach(a=>expect(a.url).not.toContain("Photo_2026_Temp"));
   });
+
 });
 
 describe("privacy",()=>{
