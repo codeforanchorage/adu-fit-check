@@ -17,11 +17,10 @@ for(const q of process.argv.slice(2)){
   console.log("buildings: "+site.bldgs.length+"  "+site.bldgs.map(b=>openRing(b.pts).length+" corners "+f1(b.area)+" sq ft").join("; "));
   console.log("footprint "+f1(site.bldgArea)+" sq ft, coverage "+f1(site.bldgArea/lotA*100)+"% of mapped lot"+(p.lotSize?", "+f1(site.bldgArea/p.lotSize*100)+"% of Lot_Size":""));
   console.log("nearby: "+site.neighbors.length+" parcels, centrelines "+[...new Set(site.lines.map(l=>l.type+":"+l.label))].join(", "));
-  const edges=classifyEdges(lot,site.neighbors,site.lines),addrStreet=p.addr.replace(/^\d+\S*\s+/,"");
-  const guess=[...new Set(edges.filter(e=>e.kind==="street").map(e=>e.label))].find(n=>n.toUpperCase()===addrStreet);
-  const fr=typesFromEdges(lot,edges,guess),n=lot.length;
+  const edges=classifyEdges(lot,site.neighbors,site.lines);
+  const fr=typesFromEdges(lot,edges),n=lot.length;
   lot.forEach((a,i)=>{const b=lot[(i+1)%n];console.log("  line "+L(i)+"  "+f1(Math.hypot(b.x-a.x,b.y-a.y)).padStart(6)+" ft  "+edges[i].kind.padEnd(8)+" "+(edges[i].label||"").padEnd(16)+" -> "+fr.types[i])});
-  console.log("streets: "+(fr.streets.join(", ")||"none")+(fr.streets.length>1?"  CORNER LOT, user is asked; default "+fr.primary+(guess?" (matches the address)":" (longest frontage)"):""));
+  console.log("streets: "+(fr.streets.join(", ")||"none")+(fr.multi?"  MORE THAN ONE STREET SIDE: full front setback on each, no rear (AMC 21.06.030C.4)":""));
   const d=DIST[normZone(p.zone)];if(!d){console.log("district not in DIST: setbacks by hand");continue}
   const S={ftPerPx:1,lot,types:fr.types,bldgs:site.bldgs.map(b=>openRing(b.pts)),nb:[],bldgArea:site.bldgArea,adu:{w:20,d:30,rot:0}};
   const R={front:d[0],side:d[1],rear:d[2],cov:d[3],sep:0,tall:false,maxA:maxAduArea(0),house:0};

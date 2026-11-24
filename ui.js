@@ -160,7 +160,7 @@ $("copy").addEventListener("click",async()=>{const r=S.result;if(!r)return;
   setTimeout(()=>$("copied").textContent="",2500)});
 
 /* ---------- loading a survey ---------- */
-function setImage(c){S.img=c;S.iw=c.width;S.ih=c.height;S.ftPerPx=null;S.lot=[];S.lotClosed=false;S.types=[];S.bldgs=[];S.nb=[];S.draft=[];S.scalePts=[];S.bldgArea=null;S.info=null;S.site=null;$("frontPick").innerHTML="";$("frontPick").classList.remove("on");S.mapDirty=true;layout()}
+function setImage(c){S.img=c;S.iw=c.width;S.ih=c.height;S.ftPerPx=null;S.lot=[];S.lotClosed=false;S.types=[];S.bldgs=[];S.nb=[];S.draft=[];S.scalePts=[];S.bldgArea=null;S.info=null;S.site=null;S.mapDirty=true;layout()}
 function toCanvas(src,w,h){const m=1600/Math.max(w,h),k=Math.min(1,m),c=document.createElement("canvas");c.width=Math.round(w*k);c.height=Math.round(h*k);c.getContext("2d").drawImage(src,0,0,c.width,c.height);return c}
 function loadScript(u){return new Promise((res,rej)=>{const s=document.createElement("script");s.src=u;s.onload=res;s.onerror=rej;document.head.appendChild(s)})}
 $("file").addEventListener("change",async e=>{const f=e.target.files[0];if(!f)return;e.target.value="";
@@ -209,17 +209,13 @@ $("ai").addEventListener("click",async()=>{if(!sampler||!S.img)return;const btn=
 let dataMod=null;const data=()=>dataMod||(dataMod=import("./data.js"));
 const amsg=t=>{$("addrMsg").textContent=t};
 const btnEl=(text,fn,cls)=>{const b=document.createElement("button");b.type="button";b.textContent=text;if(cls)b.className=cls;b.addEventListener("click",fn);return b};
-// Label the lot lines from the streets and alleys around the lot. `primary` is the street the rear line is measured against.
-function applyFrontage(primary){const s=S.site;if(!s)return;const r=typesFromEdges(S.lot,s.edges,primary);S.types=r.types;s.frontage=r;
-  const box=$("frontPick");box.innerHTML="";
-  if(r.streets.length>1){const sp=document.createElement("span");sp.textContent="Corner lot. Which street does the house face?";box.appendChild(sp);
-    r.streets.forEach(n=>{const b=btnEl(n,()=>{applyFrontage(n);S.mapDirty=true;update()});b.setAttribute("aria-pressed",n===r.primary);box.appendChild(b)})}
-  box.classList.toggle("on",r.streets.length>1)}
+// Label the lot lines from the streets and alleys around the lot (rules.js typesFromEdges).
+function applyFrontage(){const s=S.site;if(!s)return;const r=typesFromEdges(S.lot,s.edges);S.types=r.types;s.frontage=r}
 function frontageNote(){const s=S.site,r=s.frontage,ix=k=>s.edges.map((e,i)=>e.kind===k?L(i):null).filter(Boolean),ls=a=>a.length>1?"Lines "+a.join(", "):"Line "+a[0];
   const out=[];
   if(!r.streets.length)out.push("No street was found next to this lot on the map, so line "+L(S.types.indexOf("front"))+" is only a placeholder for the front. Open step 2 and click the line labels to set them.");
   else if(r.streets.length===1)out.push(ls(ix("street"))+" along "+r.streets[0]+(ix("street").length>1?" are":" is")+" the front.");
-  else out.push("This is a corner lot on "+r.streets.join(" and ")+". Every line on a street is a front lot line (AMC 21.15.040), so each gets the front setback here. Pick the street the house faces to set the rear line.");
+  else out.push("This lot has more than one street side: "+r.streets.join(" and ")+". Each street line gets the full front setback here, and there is no rear setback: the other lines are sides (AMC 21.06.030C.4). The zoning director decides the setbacks on a lot like this and may reduce one front setback to no less than half.");
   if(ix("alley").length)out.push(ls(ix("alley"))+" along an alley: no setback there.");
   if(ix("open").length)out.push(ls(ix("open"))+" faces land with no parcel and no mapped street or alley. Check how it should be labelled.");
   return out.join(" ")}
@@ -241,9 +237,7 @@ function sceneFromGIS(info,site){
   S.bldgs=site.bldgs.map(b=>openRing(b.pts).map(px));
   S.bldgArea=site.bldgArea;   // clipped to the lot, holes taken out, in sq ft
   S.site={edges,lotA};
-  const addrStreet=(info.addr||"").replace(/^\d+\S*\s+/,"").toUpperCase();
-  const guess=[...new Set(edges.filter(e=>e.kind==="street").map(e=>e.label))].find(n=>n.toUpperCase()===addrStreet);
-  applyFrontage(guess);
+  applyFrontage();
   const z=normZone(info.zone);if(DIST[z]){$("dist").value=z;const d=DIST[z];$("rFront").value=d[0];$("rSide").value=d[1];$("rRear").value=d[2];$("rCov").value=d[3]}
   const ce=cen(S.lot);S.adu.x=ce.x;S.adu.y=ce.y;S.mapDirty=true;setMode("place");
   const b=bestSpot();if(b){S.adu.x=b.x;S.adu.y=b.y;S.adu.rot=b.rot;$("rot").value=b.rot;$("rotv").textContent=b.rot+"°";update()}

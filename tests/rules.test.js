@@ -26,15 +26,35 @@ describe("lot line labels",()=>{
   it("typesFromEdges: one street and an alley",()=>{
     const lot=box(0,0,60,125),k=(kind,label="")=>({kind,label});
     const r=typesFromEdges(lot,[k("alley","alley"),k("interior"),k("street","W Example Ave"),k("interior")]);
-    expect(r.types).toEqual(["alley","side","front","side"]);expect(r.streets).toEqual(["W Example Ave"]);
+    expect(r.types).toEqual(["alley","side","front","side"]);expect(r.streets).toEqual(["W Example Ave"]);expect(r.multi).toBe(false);
+    const one=typesFromEdges(lot,[k("interior"),k("interior"),k("street","W Example Ave"),k("interior")]);
+    expect(one.types).toEqual(["rear","side","front","side"]);   // an interior lot still has a rear
   });
-  it("typesFromEdges: corner lot, every street line is a front (AMC 21.15.040)",()=>{
+  it("typesFromEdges: corner lot has fronts and sides only, no rear (AMC 21.06.030C.4, illustration note 3)",()=>{
     const lot=box(0,0,60,125),k=(kind,label="")=>({kind,label});
-    const edges=[k("interior"),k("street","Example Pl"),k("street","W Example Ave"),k("interior")];
-    const a=typesFromEdges(lot,edges,"W Example Ave");
-    expect(a.types).toEqual(["rear","front","front","side"]);expect(a.streets).toHaveLength(2);
-    const b=typesFromEdges(lot,edges,"Example Pl");
-    expect(b.types).toEqual(["side","front","front","rear"]);
+    const r=typesFromEdges(lot,[k("interior"),k("street","Example Pl"),k("street","W Example Ave"),k("interior")]);
+    expect(r.types).toEqual(["side","front","front","side"]);expect(r.multi).toBe(true);
+    expect(r.streets).toEqual(["Example Pl","W Example Ave"]);   // longest frontage first
+  });
+  it("typesFromEdges: corner lot with an alley keeps the alley",()=>{
+    const lot=box(0,0,60,125),k=(kind,label="")=>({kind,label});
+    const r=typesFromEdges(lot,[k("interior"),k("alley","alley"),k("street","W Example Ave"),k("street","Example St")]);
+    expect(r.types).toEqual(["side","alley","front","front"]);
+  });
+  it("typesFromEdges: double-frontage lot has no rear either",()=>{
+    const lot=box(0,0,60,125),k=(kind,label="")=>({kind,label});
+    const r=typesFromEdges(lot,[k("street","North St"),k("interior"),k("street","South St"),k("interior")]);
+    expect(r.types).toEqual(["front","side","front","side"]);
+  });
+  it("corner lot: full front setback on both streets, side setback on the rest",()=>{
+    const lot=box(0,0,60,125),k=(kind,label="")=>({kind,label});
+    const types=typesFromEdges(lot,[k("interior"),k("street","Example Pl"),k("street","W Example Ave"),k("interior")]).types;
+    const S=scene({types});
+    expect(check(S,at(S,30,90),R1(),false).ok).toBe(true);     // 20.0 ft from both street lines
+    expect(check(S,at(S,31,90),R1(),false).ok).toBe(false);    // 19.0 ft from the Example Pl line
+    expect(check(S,at(S,30,91),R1(),false).ok).toBe(false);    // 19.0 ft from the W Example Ave line
+    expect(check(S,at(S,15,20),R1(),false).ok).toBe(true);     // 5.0 ft from the top and left lines: sides, not a rear
+    expect(check(S,at(S,15,19),R1(),false).ok).toBe(false);    // 4.0 ft
   });
   it("typesFromEdges: no street found falls back to the placeholder front",()=>{
     const lot=box(0,0,60,125),k=(kind)=>({kind,label:""});

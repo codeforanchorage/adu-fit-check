@@ -41,22 +41,35 @@ export function autoTypes(lot,front){const n=lot.length,mid=i=>({x:(lot[i].x+lot
   return lot.map((_,i)=>{if(i===fi)return "front";let d=Math.abs(ang(i)-ang(fi))%Math.PI;d=Math.min(d,Math.PI-d);return d<Math.PI/4?"rear":"side"})}
 
 // Label lot lines from what the map says is outside each one (geometry.js classifyEdges).
+//
 // AMC 21.15.040 "Lot line, front": any boundary line of a lot along the edge of a
 // right-of-way of a dedicated street, private street or road easement. So every edge on a
-// street is a front lot line, and a corner lot has more than one. `primary` is the street
-// label the rear line is measured against; with none given, the street with the longest
-// frontage is used.
-// Returns {types, streets:[labels], primary, front:index|null}
-export function typesFromEdges(lot,edges,primary){
+// street is a front lot line.
+//
+// One street: the line most parallel to the front is the rear, the rest are sides.
+//
+// Two or more streets (corner and double-frontage lots):
+//   AMC 21.06.030C.4.a: the director determines the setbacks. At least one front setback
+//   has the full depth required in the district, and no other front setback is less than
+//   half that depth.
+//   AMC 21.06 setback illustration, note 7: "Until such determination, full-depth setbacks
+//   apply on all frontages." So every street line gets the full front setback here.
+//   AMC 21.06 setback illustration, note 3: "On corner, double-frontage, and three-sided
+//   lots, there are no rear setbacks, but only front and side setbacks." So every line that
+//   is not on a street or alley is a side.
+// Streets are told apart by name, so a lot with two frontages on one looping street is
+// treated as having one.
+//
+// Returns {types, streets:[labels, longest frontage first], multi:boolean, front:index|null}
+export function typesFromEdges(lot,edges){
   const n=lot.length,len=i=>Math.hypot(lot[(i+1)%n].x-lot[i].x,lot[(i+1)%n].y-lot[i].y);
   const tot={};edges.forEach((e,i)=>{if(e.kind==="street")tot[e.label]=(tot[e.label]||0)+len(i)});
-  const streets=Object.keys(tot).sort((a,b)=>tot[b]-tot[a]);
-  if(!streets.length){const types=autoTypes(lot);edges.forEach((e,i)=>{if(e.kind==="alley"&&types[i]!=="front")types[i]="alley"});return {types,streets,primary:null,front:null}}
-  if(!streets.includes(primary))primary=streets[0];
-  let fi=-1;edges.forEach((e,i)=>{if(e.kind==="street"&&e.label===primary&&(fi<0||len(i)>len(fi)))fi=i});
-  const types=autoTypes(lot,fi);
+  const streets=Object.keys(tot).sort((a,b)=>tot[b]-tot[a]),multi=streets.length>1;
+  if(!streets.length){const types=autoTypes(lot);edges.forEach((e,i)=>{if(e.kind==="alley"&&types[i]!=="front")types[i]="alley"});return {types,streets,multi,front:null}}
+  let fi=-1;edges.forEach((e,i)=>{if(e.kind==="street"&&e.label===streets[0]&&(fi<0||len(i)>len(fi)))fi=i});
+  const types=multi?lot.map(()=>"side"):autoTypes(lot,fi);
   edges.forEach((e,i)=>{if(e.kind==="street")types[i]="front";else if(e.kind==="alley")types[i]="alley";else if(types[i]==="front")types[i]="side"});
-  return {types,streets,primary,front:fi};
+  return {types,streets,multi,front:fi};
 }
 
 // The plan check.

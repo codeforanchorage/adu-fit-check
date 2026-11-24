@@ -62,18 +62,35 @@ def build():
         shutil.rmtree(DEPLOY)
     os.makedirs(DEPLOY)
     sums = []
+    texts = {}
     for name in FILES:
         src = os.path.join(BASE, name)
         if not os.path.isfile(src):
             sys.exit(f"missing {name}")
-        shutil.copyfile(src, os.path.join(DEPLOY, name))
-        sums.append(f"   {md5(open(src, 'rb').read())}  {name}")
-    # every local module the page imports must be in the upload
+        texts[name] = open(src, encoding="utf-8").read()
+    # DreamHost tells browsers to keep .js files for 30 days and .html for 10 minutes. Without
+    # a version on the script addresses, a returning visitor gets the new page with old
+    # scripts. So every local script reference in the upload copy gets ?v=<stamp>, where the
+    # stamp changes whenever any site file changes. The files in the repo are left as they are.
+    stamp = md5("".join(texts[n] for n in FILES).encode("utf-8"))[:8]
+    scripts = [n for n in FILES if n.endswith(".js")]
+    stamped = 0
     for name in FILES:
-        text = open(os.path.join(BASE, name), encoding="utf-8").read()
+        text = texts[name]
+        for other in scripts:
+            for ref in ('"./' + other + '"', 'src="' + other + '"'):
+                if ref in text:
+                    text = text.replace(ref, ref[:-1] + "?v=" + stamp + '"')
+                    stamped += 1
+        open(os.path.join(DEPLOY, name), "w", encoding="utf-8", newline="\n").write(text)
+        sums.append(f"   {md5(text.encode('utf-8'))}  {name}")
+        # every local module the page imports must be in the upload
         for other in ("ui.js", "geometry.js", "rules.js", "data.js"):
-            if ('"./' + other + '"' in text or 'src="' + other + '"' in text) and other not in FILES:
+            if ('"./' + other in text or 'src="' + other in text) and other not in FILES:
                 sys.exit(f"{name} loads {other}, which is not in FILES")
+    if stamped < 5:
+        sys.exit(f"only {stamped} script references were stamped; expected at least 5. Has the way scripts are loaded changed?")
+    print(f"version stamp {stamp} on {stamped} script references")
     open(os.path.join(DEPLOY, "README-UPLOAD.txt"), "w", encoding="utf-8", newline="\n").write(
         README.format(live=LIVE, sums="\n".join(sums)))
     print(f"-> {DEPLOY}  ({len(FILES)} files + README-UPLOAD.txt)")
