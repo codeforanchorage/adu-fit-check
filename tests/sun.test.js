@@ -1,5 +1,5 @@
 import {describe,it,expect} from "vitest";
-import {sunPosition,zonedToUtc,todayIn,shadowOffset,compass} from "../sun.js";
+import {sunPosition,zonedToUtc,todayIn,shadowOffset,sunVector,compass} from "../sun.js";
 import {sweep,inside} from "../geometry.js";
 
 // Anchorage, near the middle of the Bowl
@@ -55,6 +55,14 @@ describe("shadowOffset: length is height / tan(sun angle), pointing away from th
   it("capped at the longest length asked for; nothing when the sun is down",()=>{
     const o=shadowOffset(20,2,180,400);expect(o.len).toBe(400);expect(o.capped).toBe(true);expect(shadowOffset(20,5.34,180,600).capped).toBe(false);
     expect(shadowOffset(20,0,180)).toBe(null);expect(shadowOffset(20,-3,180)).toBe(null);
+  });
+  it("sunVector agrees with the flat shadow: the shadow points directly away from the sun",()=>{
+    for(const [alt,az] of [[45,180],[20,90],[5.4,200],[52,265]]){
+      const v=sunVector(alt,az),o=shadowOffset(10,alt,az);
+      expect(Math.hypot(v.x,v.y,v.z)).toBeCloseTo(1);expect(v.y).toBeCloseTo(Math.sin(alt*Math.PI/180));
+      // walking from the top of a 10 ft pole along -v reaches the ground at the shadow's tip (dy is feet south, like z)
+      expect(-v.x*10/v.y).toBeCloseTo(o.dx);expect(-v.z*10/v.y).toBeCloseTo(o.dy);
+    }
   });
   it("compass words",()=>{
     expect(compass(0)).toBe("north");expect(compass(182)).toBe("south");expect(compass(225)).toBe("south-west");expect(compass(359)).toBe("north");

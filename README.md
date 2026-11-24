@@ -14,6 +14,7 @@ Live copy: https://www.brendanbabb.com/experiments/adu-fit/
 - After a lookup, the "other reviews" boxes for seismic zone, flood zone and slope are filled from the Municipality's map layers, with the layer and its date shown under each.
 - After a lookup, a Drawing / Aerial photo switch puts the Municipality's own aerial photo under the lot lines (2026, or 2024 if that one does not load), and a link opens street view in Google Maps in a new tab. No Google imagery is drawn in the page.
 - After a lookup, a Shadows panel draws the shadows of the ADU and the nearby buildings for any date and time of day. It is an aid for discussion: no shadow rule is checked.
+- After a lookup, a 3D view shows the lot, the nearby buildings and the ADU as blocks, from above, from the street or from inside the ADU, with the same sun and shadows. It is view-only and loads three.js the first time it is opened.
 - Upload of a survey image or PDF, traced by hand: scale, lot lines, buildings, no-build areas.
 - ADU designs come from the Municipality's pre-approved plan catalog (`plans.json`), with a custom size as well.
 - Plan check: setbacks by lot-line type, alley exemption, overlap with buildings and no-build areas, lot coverage, ADU floor area.
@@ -31,12 +32,13 @@ It never requests or shows owner names or mailing addresses.
 | `rules.js` | Zoning numbers (`DIST`) and the plan check (`check()`), each with its Anchorage Municipal Code citation |
 | `data.js` | ArcGIS REST queries and clipping buildings to the lot |
 | `sun.js` | Sun position and shadow length (pure functions) |
+| `view3d.js` | The 3D block view (three.js), loaded on demand |
 | `plans.json` | The pre-approved ADU plans: name, designer, footprint, floor area, and where each number comes from |
 | `tests/` | Vitest unit tests, and `live-check.mjs` for checking an address from the command line |
 | `build_deploy.py` | Builds the upload folder for DreamHost |
 | `ADU_FIT_CHECK_TASK.md` | The work order, by phase |
 
-No framework and no build step. Turf.js, pdf.js and the fonts load from CDNs.
+No framework and no build step. Turf.js, pdf.js, three.js and the fonts load from CDNs; three.js only when the 3D view is opened.
 
 ## Run it
 
@@ -71,6 +73,7 @@ The plans are in `plans.json`, read from www.muni.org/ADU on 2026-11-24. The Mun
 
 ## Known limits
 
+- The 3D view is a block model with the same limits as the shadows, and it cannot be unit-tested here: check it in a browser after changing `view3d.js`.
 - Shadows treat the ground as flat and every building as a flat-topped block, and show no trees or fences. Building heights come from the `ELEVATION` field of the Municipality's building layer, which the layer does not document; it is read as height above ground in feet, probably to the highest point of the roof. About one building in five has no value and casts no shadow. ADU heights are guesses (`heightGuess` in `plans.json`) that the person can change.
 - Plan footprints are estimates (see above), so distances for a catalog plan may be off by a foot or two.
 - ADU height (25 ft, or 30 ft over a garage, AMC 21.05.070D.1) is not checked: no plan height is published.

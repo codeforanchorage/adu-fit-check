@@ -57,6 +57,12 @@ button .n{font-family:var(--mono);opacity:.75;margin-right:5px}
 .inline{display:none;gap:6px;align-items:center;flex-wrap:wrap;font-size:13.5px}
 .inline.on{display:flex}
 .inline a{color:var(--accent);margin-left:6px}
+.inline .sep{width:1px;height:24px;background:var(--line);margin:0 4px}
+.cvwrap{position:relative}
+#three{position:absolute;inset:0;border:1px solid var(--line);border-radius:4px;overflow:hidden;background:#dfe7ee;touch-action:none;cursor:grab}
+#three[hidden],#v3kinds[hidden]{display:none}
+#three:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#v3kinds{display:inline-flex;gap:6px;flex-wrap:wrap}
 canvas{display:block;width:100%;border:1px solid var(--line);border-radius:4px;background:#fff;touch-action:none;cursor:crosshair}
 .legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12.5px;color:var(--muted)}
 .sw{display:inline-block;width:12px;height:12px;border-radius:2px;margin-right:5px;vertical-align:-1px}
@@ -131,10 +137,21 @@ input[type=range]{width:100%}
       <div class="inline" id="viewBox" role="group" aria-label="What is shown under the lot lines">
         <button type="button" id="viewDrawing" aria-pressed="true">Drawing</button>
         <button type="button" id="viewAerial" aria-pressed="false">Aerial photo</button>
+        <span class="sep"></span>
+        <button type="button" id="view3d" aria-pressed="false">3D view</button>
+        <span id="v3kinds" hidden role="group" aria-label="Where to look from">
+          <button type="button" data-v3="overview" aria-pressed="true">From above</button>
+          <button type="button" data-v3="street" aria-pressed="false">From the street</button>
+          <button type="button" data-v3="adu" aria-pressed="false">From the ADU</button>
+        </span>
         <a id="street" href="https://www.google.com/maps" target="_blank" rel="noopener noreferrer">See street view (opens Google Maps in a new tab)</a>
         <span id="viewMsg" class="small" style="margin:0;flex-basis:100%" aria-live="polite"></span>
+        <span id="threeMsg" class="small" style="margin:0;flex-basis:100%" aria-live="polite"></span>
       </div>
-      <canvas id="cv" tabindex="0" aria-label="Survey drawing. In Place ADU mode, drag the ADU or use arrow keys to move it one foot."></canvas>
+      <div class="cvwrap">
+        <canvas id="cv" tabindex="0" aria-label="Survey drawing. In Place ADU mode, drag the ADU or use arrow keys to move it one foot."></canvas>
+        <div id="three" hidden tabindex="0" role="group" aria-label="3D view of the lot, as blocks. Drag or use the arrow keys to turn it, and plus and minus to zoom. The plan-check table and the sentence under Shadows give the same information in words."></div>
+      </div>
       <div class="legend">
         <span><span class="sw" style="background:rgba(23,140,80,.45)"></span>ADU fits with its center here</span>
         <span><span class="sw" style="background:rgba(200,45,35,.4)"></span>Does not fit</span>
@@ -238,7 +255,9 @@ input[type=range]{width:100%}
 <script type="importmap">
 {"imports":{
   "@turf/intersect":"https://cdn.jsdelivr.net/npm/@turf/intersect@7.2.0/+esm",
-  "@turf/helpers":"https://cdn.jsdelivr.net/npm/@turf/helpers@7.2.0/+esm"
+  "@turf/helpers":"https://cdn.jsdelivr.net/npm/@turf/helpers@7.2.0/+esm",
+  "three":"https://cdn.jsdelivr.net/npm/three@0.187.0/build/three.module.min.js",
+  "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.187.0/examples/jsm/"
 }}
 </script>
 <script type="module" src="ui.js"></script>

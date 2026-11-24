@@ -11,7 +11,7 @@ import {DIST,TYPES,TNAME,L,check,margin,maxAduArea,autoTypes,typesFromEdges,norm
 const $=id=>document.getElementById(id);
 const cv=$("cv"),cx=cv.getContext("2d");
 const S={img:null,iw:760,ih:1000,ftPerPx:null,lot:[],lotClosed:false,types:[],bldgs:[],nb:[],draft:[],mode:"place",
-  adu:{w:20,d:30,x:0,y:0,rot:0},scalePts:[],map:null,mapDirty:true,v:1,ox:0,view:"drawing"};
+  adu:{w:20,d:30,x:0,y:0,rot:0},scalePts:[],map:null,mapDirty:true,v:1,ox:0,view:"drawing",three:false};
 
 function aduPoly(x,y){return rectPoly(S.adu,x,y,S.ftPerPx)}
 function rules(){const n=id=>Math.max(0,parseFloat($(id).value)||0);const h=n("house");return {front:n("rFront"),side:n("rSide"),rear:n("rRear"),cov:n("rCov"),sep:n("rSep"),tall:$("tall").checked,maxA:maxAduArea(h),house:h}}
@@ -96,6 +96,7 @@ function draw(){
     path(p,true);cx.fillStyle=ok?"rgba(23,140,80,.55)":"rgba(200,45,35,.55)";cx.fill();cx.strokeStyle=ok?"#0e5a35":"#8c1c16";cx.lineWidth=2.5;cx.stroke();
     cx.fillStyle="#fff";cx.font="600 13px 'IBM Plex Sans',sans-serif";cx.textAlign="center";cx.textBaseline="middle";
     cx.fillText((S.adu.plan?S.adu.plan.name.replace(/^The /,""):"ADU")+" "+S.adu.w+" × "+S.adu.d,X(S.adu),Y(S.adu)-8);cx.fillText(ok?"Fits":"Does not fit",X(S.adu),Y(S.adu)+9)}
+  if(S.three)sync3d();
 }
 function label(t,p,c){cx.font="500 11px 'IBM Plex Sans',sans-serif";cx.textAlign="center";cx.textBaseline="middle";cx.fillStyle=c;cx.fillText(t,X(p),Y(p))}
 function badge(t,p){cx.beginPath();cx.arc(X(p),Y(p),9,0,7);cx.fillStyle="#3d5068";cx.fill();cx.font="600 11px 'IBM Plex Sans',sans-serif";cx.fillStyle="#fff";cx.textAlign="center";cx.textBaseline="middle";cx.fillText(t,X(p),Y(p)+0.5)}
@@ -131,7 +132,7 @@ const GUIDE={
   bldg:"<b>Step 3.</b> Click the corners of each existing building. Click the first corner again to close each one.",
   nobuild:"<b>Step 4.</b> Pick a type, then click the corners of any area you cannot build on, such as an easement or septic field.",
   place:"<b>Step 5.</b> Drag the ADU around the lot, or click a spot to move it there. Arrow keys nudge it one foot."};
-function setMode(m){S.mode=m;S.draft=[];if(m!=="scale")S.scalePts=[];
+function setMode(m){S.mode=m;S.draft=[];if(m!=="scale")S.scalePts=[];if(S.three&&m!=="place")show3d(false);
   document.querySelectorAll("[data-mode]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.mode===m));
   $("guide").innerHTML=GUIDE[m];$("scaleBox").classList.toggle("on",m==="scale"&&S.scalePts.length===2);
   $("shapeBox").classList.toggle("on",m==="lot"||m==="bldg"||m==="nobuild");$("nbLabel").style.display=m==="nobuild"?"":"none";
@@ -204,7 +205,7 @@ $("copy").addEventListener("click",async()=>{const r=S.result;if(!r)return;
 /* ---------- loading a survey ---------- */
 function setImage(c){S.img=c;S.iw=c.width;S.ih=c.height;S.ftPerPx=null;S.lot=[];S.lotClosed=false;S.types=[];S.bldgs=[];S.nb=[];S.draft=[];S.scalePts=[];S.bldgArea=null;S.info=null;S.site=null;clearFlagNotes();
   S.view="drawing";$("viewBox").classList.remove("on");$("viewDrawing").setAttribute("aria-pressed","true");$("viewAerial").setAttribute("aria-pressed","false");$("viewMsg").textContent="";
-  $("sunOn").checked=false;$("sunOn").disabled=true;sunUpdate();
+  $("sunOn").checked=false;$("sunOn").disabled=true;sunUpdate();show3d(false);
   S.mapDirty=true;layout()}
 function toCanvas(src,w,h){const m=1600/Math.max(w,h),k=Math.min(1,m),c=document.createElement("canvas");c.width=Math.round(w*k);c.height=Math.round(h*k);c.getContext("2d").drawImage(src,0,0,c.width,c.height);return c}
 function loadScript(u){return new Promise((res,rej)=>{const s=document.createElement("script");s.src=u;s.onload=res;s.onerror=rej;document.head.appendChild(s)})}
@@ -314,12 +315,58 @@ $("sunDate").value=todayIn(TZ);
 ["sunOn","sunDate","sunTime","aduH"].forEach(id=>$(id).addEventListener("input",sunUpdate));
 document.querySelectorAll("[data-sunday]").forEach(b=>b.addEventListener("click",()=>{const t=todayIn(TZ);$("sunDate").value=b.dataset.sunday==="today"?t:t.slice(0,4)+"-"+b.dataset.sunday;sunUpdate()}));
 
+/* ---------- 3D view ---------- */
+// A rough block model for thinking about shadows and sight lines (view3d.js, which loads
+// three.js from a CDN the first time "3D view" is pressed). Only after an address lookup.
+// It shows what the drawing shows: the same buildings, heights, sun and ADU. The ADU is
+// moved on the flat drawing, not here. Nothing in it is part of the plan check.
+let v3=null;
+const EYE_FT=5.5,UPPER_EYE_FT=15.5;   // eye height standing on the ground floor, and on an upper floor
+const tmsg=t=>{$("threeMsg").textContent=t};
+const V3TEXT={overview:"From above.",street:"From the street, at eye height.",adu:""};
+// the sheet (drawing or aerial photo) with the lot lines painted on, to lay on the ground
+// (plain paper or the bare photo: the sheet's title and north arrow would lie on the ground upside down)
+function groundCanvas(){const photo=S.view==="aerial"&&S.site.aerialPhoto,fr=S.site.frame,m=Math.min(2,4096/Math.max(fr.W,fr.H)),c=document.createElement("canvas");c.width=Math.round(fr.W*m);c.height=Math.round(fr.H*m);
+  const g=c.getContext("2d");g.scale(m,m);if(photo)g.drawImage(photo,0,0,fr.W,fr.H);else{g.fillStyle="#eeece4";g.fillRect(0,0,fr.W,fr.H)}
+  g.beginPath();S.lot.forEach((p,i)=>i?g.lineTo(p.x,p.y):g.moveTo(p.x,p.y));g.closePath();g.lineJoin="round";g.strokeStyle="#fff";g.lineWidth=5;g.stroke();g.strokeStyle="#1f5fa8";g.lineWidth=2.5;g.stroke();
+  return c}
+function build3d(keepCamera){if(!v3||!S.site||!S.site.around)return;const k=S.ftPerPx,F=p=>({x:p.x*k,z:p.y*k}),n=S.lot.length;
+  // the way out to the street: the middle of the first front lot line, pointing away from the lot
+  let front=null;const fi=S.types.indexOf("front");
+  if(fi>=0){const a=F(S.lot[fi]),b=F(S.lot[(fi+1)%n]),c=F(cen(S.lot)),mx=(a.x+b.x)/2,mz=(a.z+b.z)/2,len=Math.hypot(b.x-a.x,b.z-a.z)||1;let nx=-(b.z-a.z)/len,nz=(b.x-a.x)/len;
+    if((c.x-mx)*nx+(c.z-mz)*nz>0){nx=-nx;nz=-nz}front={x:mx,z:mz,nx,nz}}
+  v3.setSite({w:S.iw*k,h:S.ih*k,ground:groundCanvas(),lot:S.lot.map(F),front,buildings:S.site.around.map(b=>({pts:b.pts.map(F),h:b.h}))},keepCamera);
+  sync3d()}
+// the ADU and the sun, which change as the controls are moved
+function sync3d(){if(!v3||!S.three||!S.site)return;const k=S.ftPerPx;
+  v3.setAdu(ready()?{x:S.adu.x*k,z:S.adu.y*k,w:S.adu.w,d:S.adu.d,h:aduHeight(),rot:S.adu.rot,ok:!!(S.result&&S.result.ok)}:null);
+  v3.setSun(shadowsOn()?sunNow():null);v3.render()}
+function view3d(name){if(!v3)return;const k=S.ftPerPx;
+  document.querySelectorAll("[data-v3]").forEach(b=>b.setAttribute("aria-pressed",String(b.dataset.v3===name)));
+  if(name==="adu"){const eye=aduHeight()>=20?UPPER_EYE_FT:EYE_FT,t=S.bldgs.length?cen(S.bldgs[0]):null;
+    v3.setView("adu",{eye,look:t?{x:t.x*k,z:t.y*k}:null});
+    tmsg("Standing in the ADU, eyes "+eye+" ft above the ground"+(eye>EYE_FT?" (upper floor)":"")+", looking toward "+(t?"the main building":"the north")+". Drag or use the arrow keys to look around. "+V3NOTE)}
+  else{v3.setView(name);tmsg(V3TEXT[name]+" Drag to turn, scroll or pinch to zoom; the arrow keys and + and - also work. "+V3NOTE)}}
+const V3NOTE="Blocks only: flat ground, flat roofs, no trees or fences. Paler buildings have no mapped height and are drawn 12 ft tall. Tick \"Show shadows\" to see the sun. To move the ADU, switch 3D view off.";
+async function show3d(on){const btn=$("view3d"),box=$("three");
+  if(!on||!S.site||!S.site.around){S.three=false;box.hidden=true;btn.setAttribute("aria-pressed","false");$("v3kinds").hidden=true;tmsg(on&&S.site?"The buildings around this lot could not be loaded, so the 3D view is not available for it.":"");return}
+  if(!v3){tmsg("Getting the 3D view…");const s=S.site;
+    try{const m=await import("./view3d.js");box.hidden=false;v3=m.createView(box)}
+    catch(e){console.error(e);box.hidden=true;tmsg("The 3D view could not start in this browser. The drawing and the shadows still work.");return}
+    if(S.site!==s){box.hidden=true;tmsg("");return}}   // another address or survey was loaded meanwhile
+  S.three=true;box.hidden=false;btn.setAttribute("aria-pressed","true");$("v3kinds").hidden=false;
+  if(S.mode!=="place")setMode("place");
+  v3.resize();build3d(false);view3d("overview")}
+$("view3d").addEventListener("click",()=>show3d(!S.three));
+document.querySelectorAll("[data-v3]").forEach(b=>b.addEventListener("click",()=>view3d(b.dataset.v3)));
+$("three").addEventListener("keydown",e=>{if(v3&&S.three)v3.key(e)});
+
 /* ---------- aerial photo under the drawing ---------- */
 // The Municipality's own aerial photos (data.js AERIALS), asked for only when "Aerial photo"
 // is pressed. No Google imagery is drawn here: its terms do not allow it. The street view
 // link opens Google Maps in a new tab instead.
 const vmsg=t=>{$("viewMsg").textContent=t};
-function setView(v){S.view=v;$("viewDrawing").setAttribute("aria-pressed",String(v==="drawing"));$("viewAerial").setAttribute("aria-pressed",String(v==="aerial"));draw()}
+function setView(v){S.view=v;$("viewDrawing").setAttribute("aria-pressed",String(v==="drawing"));$("viewAerial").setAttribute("aria-pressed",String(v==="aerial"));if(S.three)build3d(true);draw()}
 function loadImg(url){return new Promise((res,rej)=>{const im=new Image();im.crossOrigin="anonymous";im.onload=()=>res(im);im.onerror=rej;im.src=url})}
 async function showAerial(){const s=S.site;if(!s||!s.frame||s.aerialBusy)return;
   if(s.aerial){setView("aerial");vmsg(s.aerialNote);return}
@@ -328,7 +375,7 @@ async function showAerial(){const s=S.site;if(!s||!s.frame||s.aerialBusy)return;
     for(const a of d.AERIALS){try{got={a,im:await loadImg(d.aerialUrl(a.url,box,fr.W*m,fr.H*m))};break}catch(e){}}
     if(S.site!==s)return;   // another address or survey was loaded meanwhile
     if(!got){vmsg("The aerial photo could not be loaded. Try again in a minute. The drawing still works without it.");return}
-    s.aerial=paintSheet(S.info,s.lotA,fr,got.im,m);
+    s.aerial=paintSheet(S.info,s.lotA,fr,got.im,m);s.aerialPhoto=got.im;
     s.aerialNote=(got.a!==d.AERIALS[0]?"The "+d.AERIALS[0].year+" photo could not be loaded, so this is the "+got.a.year+" one. ":"")
       +"Aerial photo: Municipality of Anchorage, flown by EagleView "+got.a.flown+". The photo is for orientation. The mapped lot lines can sit a few feet off it, and it may not show recent construction. Screening only.";
     setView("aerial");vmsg(s.aerialNote);
@@ -425,6 +472,6 @@ function sample(){
   const b=bestSpot();if(b){S.adu.x=b.x;S.adu.y=b.y;S.adu.rot=b.rot;$("rot").value=b.rot;$("rotv").textContent=b.rot+"°";S.mapDirty=true;update()}
 }
 $("sample").addEventListener("click",sample);
-window.addEventListener("resize",()=>{layout();draw()});
+window.addEventListener("resize",()=>{layout();draw();if(S.three&&v3)v3.resize()});
 flags();sample();loadPlans();
 if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>{if(S.ftPerPx===1/6&&S.bldgs.length===2&&S.img&&S.img.width===760){const a={...S.adu},m=S.mode;sample();Object.assign(S.adu,a);setMode(m)}});

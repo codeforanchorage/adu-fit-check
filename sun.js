@@ -59,5 +59,8 @@ export function shadowOffset(h,alt,az,maxLen){
   return {dx:len*Math.sin(a),dy:-len*Math.cos(a),len,capped:len<full};
 }
 
+// Unit vector pointing at the sun, for the 3D view: x east, y up, z SOUTH.
+export function sunVector(alt,az){const c=Math.cos(alt*RAD);return {x:Math.sin(az*RAD)*c,y:Math.sin(alt*RAD),z:-Math.cos(az*RAD)*c}}
+
 // Compass word for a direction in degrees clockwise from north.
 export function compass(deg){return ["north","north-east","east","south-east","south","south-west","west","north-west"][Math.round(mod(deg,360)/45)%8]}
