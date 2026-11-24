@@ -1,0 +1,114 @@
+"""Build the DreamHost upload folder, the same way moa-bill does.
+
+    python build_deploy.py                 build deploy_dreamhost/
+    python build_deploy.py --verify [URL]  compare the live site with deploy_dreamhost/
+
+deploy_dreamhost/ is gitignored and rebuilt from scratch on every run. It holds only the
+files the site needs, so the whole folder is uploaded as it is. The upload itself is done
+by hand (see the README-UPLOAD.txt this writes). No password or key is used here.
+"""
+import hashlib
+import os
+import shutil
+import sys
+import urllib.request
+
+BASE = os.path.dirname(os.path.abspath(__file__))
+DEPLOY = os.path.join(BASE, "deploy_dreamhost")
+LIVE = "https://www.brendanbabb.com/experiments/adu-fit/"
+
+# Everything the page loads from its own folder. Tests, package files and the work order
+# stay out. If index.html or a module starts loading another local file, add it here.
+FILES = ["index.html", "ui.js", "geometry.js", "rules.js", "data.js"]
+
+README = """How to put these on DreamHost
+=============================
+
+1) Upload everything in this folder into  experiments/adu-fit/  under the site's
+   web directory:
+
+     - Panel > Files > File Manager: drag the whole folder's contents in, or
+     - SFTP/SSH:  scp index.html *.js README-UPLOAD.txt user@server.dreamhost.com:~/yourdomain.com/experiments/adu-fit/
+
+   The page has no dependency on its location: every path in it is relative.
+   It needs no PHP and no database.
+
+2) Visit {live}
+   Use https. "Copy summary" only works on a secure page.
+
+3) Check the upload:  python build_deploy.py --verify
+   It fetches each file from the live site and compares it with this folder.
+
+What the page fetches from elsewhere, from the visitor's browser:
+   - Municipality of Anchorage ArcGIS services (parcels, buildings, streets, alleys)
+   - Turf.js from cdn.jsdelivr.net, pdf.js from cdnjs.cloudflare.com
+   - fonts from fonts.googleapis.com
+
+Updating later: regenerate (python build_deploy.py) and re-upload the changed
+file(s).
+
+Files and MD5 checksums in this build:
+{sums}
+"""
+
+
+def md5(data):
+    return hashlib.md5(data).hexdigest()
+
+
+def build():
+    # moa-bill's rule applies here too: nothing may hold deploy_dreamhost/ open.
+    if os.path.isdir(DEPLOY):
+        shutil.rmtree(DEPLOY)
+    os.makedirs(DEPLOY)
+    sums = []
+    for name in FILES:
+        src = os.path.join(BASE, name)
+        if not os.path.isfile(src):
+            sys.exit(f"missing {name}")
+        shutil.copyfile(src, os.path.join(DEPLOY, name))
+        sums.append(f"   {md5(open(src, 'rb').read())}  {name}")
+    # every local module the page imports must be in the upload
+    for name in FILES:
+        text = open(os.path.join(BASE, name), encoding="utf-8").read()
+        for other in ("ui.js", "geometry.js", "rules.js", "data.js"):
+            if ('"./' + other + '"' in text or 'src="' + other + '"' in text) and other not in FILES:
+                sys.exit(f"{name} loads {other}, which is not in FILES")
+    open(os.path.join(DEPLOY, "README-UPLOAD.txt"), "w", encoding="utf-8", newline="\n").write(
+        README.format(live=LIVE, sums="\n".join(sums)))
+    print(f"-> {DEPLOY}  ({len(FILES)} files + README-UPLOAD.txt)")
+    print("\n".join(sums))
+    print(f"\nUpload the folder's contents to experiments/adu-fit/, then run:  python build_deploy.py --verify")
+
+
+def verify(url):
+    if not url.endswith("/"):
+        url += "/"
+    if not os.path.isdir(DEPLOY):
+        sys.exit("deploy_dreamhost/ does not exist. Run  python build_deploy.py  first.")
+    bad = 0
+    for name in FILES:
+        local = md5(open(os.path.join(DEPLOY, name), "rb").read())
+        try:
+            req = urllib.request.Request(url + name, headers={"User-Agent": "adu-fit-check-deploy-check", "Cache-Control": "no-cache"})
+            with urllib.request.urlopen(req, timeout=30) as r:
+                body, ctype = r.read(), r.headers.get("Content-Type", "")
+        except Exception as e:  # noqa: BLE001
+            print(f"  FAIL  {name}: {e}")
+            bad += 1
+            continue
+        ok = md5(body) == local
+        # browsers refuse a module script that is not served as JavaScript
+        js_ok = not name.endswith(".js") or "javascript" in ctype.lower()
+        print(f"  {'ok  ' if ok and js_ok else 'FAIL'}  {name}  {ctype}" + ("" if ok else "  differs from deploy_dreamhost/") + ("" if js_ok else "  not served as JavaScript"))
+        bad += not (ok and js_ok)
+    print(f"\n{url}: " + ("all files match." if not bad else f"{bad} file(s) wrong."))
+    sys.exit(1 if bad else 0)
+
+
+if __name__ == "__main__":
+    if "--verify" in sys.argv:
+        rest = [a for a in sys.argv[1:] if a != "--verify"]
+        verify(rest[0] if rest else LIVE)
+    else:
+        build()

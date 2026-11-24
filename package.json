@@ -7,7 +7,7 @@
   "type": "module",
   "scripts": {
     "test": "vitest run",
-    "start": "python -m http.server 8000"
+    "start": "python -m http.server 8000 --bind 127.0.0.1"
   },
   "devDependencies": {
     "@turf/helpers": "7.2.0",
