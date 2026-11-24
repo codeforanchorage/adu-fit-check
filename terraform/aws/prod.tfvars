@@ -4,6 +4,7 @@ stage_name  = "prod"
 # The live page, and the local test server (npm start).
 allowed_origins = [
   "https://www.brendanbabb.com",
+  "https://brendanbabb.com",
   "http://127.0.0.1:8000",
 ]
 
