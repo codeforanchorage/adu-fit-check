@@ -40,7 +40,11 @@ README = """How to put these on DreamHost
    It fetches each file from the live site and compares it with this folder.
 
 What the page fetches from elsewhere, from the visitor's browser:
-   - Municipality of Anchorage ArcGIS services (parcels, buildings, streets, alleys)
+   - Municipality of Anchorage ArcGIS services (parcels, buildings, streets, alleys,
+     seismic zones, flood areas, AWWU service) on services2.arcgis.com
+   - Municipality of Anchorage aerial photos on www.ancgis.com, only when the
+     visitor presses "Aerial photo"
+   - Google Maps, only when the visitor follows the street view link (new tab)
    - Turf.js from cdn.jsdelivr.net, pdf.js from cdnjs.cloudflare.com
    - fonts from fonts.googleapis.com
 

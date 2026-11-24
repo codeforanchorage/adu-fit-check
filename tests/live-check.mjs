@@ -2,7 +2,7 @@
 // Not part of `npm test` (it needs the network). Usage:
 //   node tests/live-check.mjs "1400 W 23RD AVE" ["another address" ...]
 // Prints what the page would draw and the plan-check table for a 20 x 30 ft ADU at the best spot.
-import {findParcels,loadSite,loadFlags} from "../data.js";
+import {findParcels,loadSite,loadFlags,sheetBox,aerialUrl,AERIALS} from "../data.js";
 import {area,clean,openRing,classifyEdges,rectPoly,inside,f1} from "../geometry.js";
 import {DIST,L,check,margin,maxAduArea,typesFromEdges,normZone,flagResults} from "../rules.js";
 
@@ -17,6 +17,11 @@ for(const q of process.argv.slice(2)){
   console.log("buildings: "+site.bldgs.length+"  "+site.bldgs.map(b=>openRing(b.pts).length+" corners "+f1(b.area)+" sq ft").join("; "));
   console.log("footprint "+f1(site.bldgArea)+" sq ft, coverage "+f1(site.bldgArea/lotA*100)+"% of mapped lot"+(p.lotSize?", "+f1(site.bldgArea/p.lotSize*100)+"% of Lot_Size":""));
   console.log("nearby: "+site.neighbors.length+" parcels, centrelines "+[...new Set(site.lines.map(l=>l.type+":"+l.label))].join(", "));
+  {const xs=lot.map(p=>p.x),ys=lot.map(p=>p.y),x0=Math.min(...xs),y0=Math.min(...ys),w=Math.max(...xs)-x0,h=Math.max(...ys)-y0,k=Math.min(8,640/w,760/h);
+    const sheet={x0,y0,k,mx:150,my:130,W:Math.round(w*k+300),H:Math.round(h*k+240)};   // the same sheet ui.js sceneFromGIS draws
+    console.log("street view point: "+(site.center?site.center.lat.toFixed(6)+","+site.center.lon.toFixed(6):"not found"));
+    for(const a of AERIALS){let s="";try{const r=await fetch(aerialUrl(a.url,sheetBox(sheet),sheet.W,sheet.H));s=r.status+" "+r.headers.get("content-type")+" "+(await r.arrayBuffer()).byteLength+" bytes"}catch(e){s="FAILED "+e.message}
+      console.log("aerial "+a.year+": "+s+"\n   "+aerialUrl(a.url,sheetBox(sheet),sheet.W,sheet.H))}}
   const edges=classifyEdges(lot,site.neighbors,site.lines);
   const fr=typesFromEdges(lot,edges),n=lot.length;
   lot.forEach((a,i)=>{const b=lot[(i+1)%n];console.log("  line "+L(i)+"  "+f1(Math.hypot(b.x-a.x,b.y-a.y)).padStart(6)+" ft  "+edges[i].kind.padEnd(8)+" "+(edges[i].label||"").padEnd(16)+" -> "+fr.types[i])});

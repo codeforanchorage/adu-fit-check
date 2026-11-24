@@ -22,6 +22,33 @@ export const LAYERS={
                                                                // This layer also holds owner names and mailing addresses. Request Service_Type only.
 };
 
+// Phase 3, aerial photos. The Municipality's own ArcGIS Server, one map service per photo
+// year. Checked against the live services on 2026-11-24: both export in WKID 102634 and
+// allow cross-origin requests. The page tries these in order and uses the first that loads.
+// "Photo_2026_Temp" looks like a temporary name; when MOA GIS renames it, change it here.
+// The Municipality's record for the 2026 photo gives no flight dates.
+const IMG="https://www.ancgis.com/arcgis/rest/services/imagery_public/";
+export const AERIALS=[
+  {url:IMG+"Photo_2026_Temp/MapServer",year:"2026",flown:"in 2026"},
+  {url:IMG+"Photo_2024/MapServer",year:"2024",flown:"20 May to 15 June 2024"}
+];
+
+// The ground a drawn sheet covers, for asking for a photo of exactly that area.
+// frame: {x0, y0, k, mx, my, W, H}. The sheet is W x H pixels at k pixels per foot; the
+// sheet pixel (mx, my) is the point (x0, y0) in feet, with y pointing down (y = minus northing).
+// Returns {xmin, ymin, xmax, ymax} in the units of SR, northing up.
+export function sheetBox(fr){
+  const u=FT_PER_UNIT;
+  return {xmin:(fr.x0-fr.mx/fr.k)/u,xmax:(fr.x0+(fr.W-fr.mx)/fr.k)/u,ymax:-(fr.y0-fr.my/fr.k)/u,ymin:-(fr.y0+(fr.H-fr.my)/fr.k)/u};
+}
+
+// Address of one aerial photo image: the box, north up, w x h pixels (the service allows up
+// to 4096 each way). Layer 0 is the photo; the newer services also hold index layers.
+export function aerialUrl(base,box,w,h){
+  return base+"/export?"+new URLSearchParams({bbox:[box.xmin,box.ymin,box.xmax,box.ymax].join(","),bboxSR:String(SR),imageSR:String(SR),
+    size:Math.round(w)+","+Math.round(h),format:"jpg",layers:"show:0",f:"image"});
+}
+
 // Projection for all geometry: NAD 1983 StatePlane Alaska 4 FIPS 5004 (US feet), Esri WKID 102634.
 // It is conformal and Anchorage lies close to its central meridian, so distances and areas
 // are true to well under 0.1%. Coordinates arrive in feet, so no unit conversion is needed.
@@ -95,12 +122,15 @@ export async function findParcels(address){
 
 // Everything else needed to draw one parcel. Coordinates come back as {x, y} in feet with
 // y pointing down the screen (y = minus northing), so north is up when drawn.
-// Returns {lot, bldgs:[{pts, area}], bldgArea, neighbors:[polygon], lines:[{type,label,pts}]}
+// Returns {lot, bldgs:[{pts, area}], bldgArea, neighbors:[polygon], lines:[{type,label,pts}], center:{lat,lon}|null}
 export async function loadSite(parcel){
   const P=([x,y])=>({x:x*FT_PER_UNIT,y:-y*FT_PER_UNIT});
   const outer=parcel.lot[0],xs=outer.map(p=>p[0]),ys=outer.map(p=>p[1]);
   const env=m=>[Math.min(...xs)-m,Math.min(...ys)-m,Math.max(...xs)+m,Math.max(...ys)+m].join(",");
   const box=m=>({geometry:env(m/FT_PER_UNIT),geometryType:"esriGeometryEnvelope",inSR:String(SR),spatialRel:"esriSpatialRelIntersects"});
+  // Middle of the parcel in latitude and longitude, only for the "See street view" link.
+  const where=query(LAYERS.parcels,{where:"Parcel_ID='"+String(parcel.pid).replace(/[^0-9A-Za-z]/g,"")+"' AND GIS_Category='Parcel'",returnExtentOnly:"true",outSR:"4326"})
+    .then(d=>{const e=d.extent;return e&&isFinite(e.xmin+e.ymin+e.xmax+e.ymax)?{lat:(e.ymin+e.ymax)/2,lon:(e.xmin+e.xmax)/2}:null}).catch(()=>null);
   const [b,nb,st,al]=await Promise.all([
     // exact outlines: no maxAllowableOffset, no geometry simplification
     query(LAYERS.buildings,{geometry:JSON.stringify({rings:[outer],spatialReference:{wkid:SR}}),geometryType:"esriGeometryPolygon",inSR:String(SR),spatialRel:"esriSpatialRelIntersects",outFields:"OBJECTID",returnGeometry:"true"}),
@@ -118,7 +148,8 @@ export async function loadSite(parcel){
     bldgs:pieces.map(p=>({pts:p.outer.map(P),area:p.area})),
     bldgArea:pieces.reduce((s,p)=>s+p.area,0),
     neighbors:(nb.features||[]).flatMap(f=>ringsToPolygons(f.geometry&&f.geometry.rings)).map(p=>p[0].map(P)),
-    lines
+    lines,
+    center:await where
   };
 }
 

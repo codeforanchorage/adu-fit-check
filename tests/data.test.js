@@ -1,6 +1,6 @@
 import {describe,it,expect} from "vitest";
 import {readFileSync} from "node:fs";
-import {addressWhere,ringsToPolygons,clipToLot,distToPolygons,SR} from "../data.js";
+import {addressWhere,ringsToPolygons,clipToLot,distToPolygons,sheetBox,aerialUrl,AERIALS,SR} from "../data.js";
 
 // Esri rings: outer clockwise (with y up), holes counter-clockwise, closed.
 const cw=(x0,y0,x1,y1)=>[[x0,y0],[x0,y1],[x1,y1],[x1,y0],[x0,y0]];
@@ -14,6 +14,34 @@ describe("addressWhere",()=>{
     const w=addressWhere("1 O'MALLEY RD%' OR 1=1 --_");
     expect(w).toContain("O''MALLEY");expect(w.match(/%/g)).toHaveLength(2);expect(w).not.toContain("_'");
     expect(w.replace(/''/g,"").match(/'/g)).toHaveLength(4);   // only the two literals' own quotes
+  });
+});
+
+describe("aerial photo request",()=>{
+  // a 50 x 140 ft lot whose north-west corner is at easting 1000, northing 5000 (y = -5000), 5 px per foot
+  const fr={x0:1000,y0:-5000,k:5,mx:150,my:130,W:550,H:940};
+  it("sheetBox covers the whole sheet, northing up",()=>{
+    const b=sheetBox(fr);
+    expect(b.xmin).toBeCloseTo(970);expect(b.xmax).toBeCloseTo(1080);
+    expect(b.ymax).toBeCloseTo(5026);expect(b.ymin).toBeCloseTo(4838);
+    // same feet per pixel both ways, so the photo is not stretched
+    expect((b.xmax-b.xmin)/fr.W).toBeCloseTo((b.ymax-b.ymin)/fr.H);
+  });
+  it("the lot's corner lands on its sheet pixel",()=>{
+    const b=sheetBox(fr);
+    expect((1000-b.xmin)*fr.k).toBeCloseTo(fr.mx);expect((b.ymax-5000)*fr.k).toBeCloseTo(fr.my);
+  });
+  it("aerialUrl asks for that box in the page's projection",()=>{
+    const u=new URL(aerialUrl(AERIALS[0].url,sheetBox(fr),1100,1880)),q=u.searchParams;
+    expect(u.pathname.endsWith("/MapServer/export")).toBe(true);
+    expect(q.get("bbox")).toBe("970,4838,1080,5026");
+    expect(q.get("bboxSR")).toBe(String(SR));expect(q.get("imageSR")).toBe(String(SR));
+    expect(q.get("size")).toBe("1100,1880");expect(q.get("f")).toBe("image");expect(q.get("layers")).toBe("show:0");
+  });
+  it("newest photo first, all on the Municipality's server",()=>{
+    expect(AERIALS.length).toBeGreaterThan(1);
+    AERIALS.forEach(a=>expect(a.url.startsWith("https://www.ancgis.com/arcgis/rest/services/imagery_public/")).toBe(true));
+    expect(Number(AERIALS[0].year)).toBeGreaterThan(Number(AERIALS[1].year));
   });
 });
 

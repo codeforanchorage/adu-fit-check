@@ -9,6 +9,8 @@ Live copy: https://www.brendanbabb.com/experiments/adu-fit/
 ## What it does
 
 - Address lookup against the Municipality's public ArcGIS services: lot lines, exact building outlines cut off at the lot line, and the front lot line and alleys taken from the street centrelines.
+- After a lookup, the "other reviews" boxes for seismic zone, flood zone and slope are filled from the Municipality's map layers, with the layer and its date shown under each.
+- After a lookup, a Drawing / Aerial photo switch puts the Municipality's own aerial photo under the lot lines (2026, or 2024 if that one does not load), and a link opens street view in Google Maps in a new tab. No Google imagery is drawn in the page.
 - Upload of a survey image or PDF, traced by hand: scale, lot lines, buildings, no-build areas.
 - Plan check: setbacks by lot-line type, alley exemption, overlap with buildings and no-build areas, lot coverage, ADU floor area.
 - The plan-check table is the text equivalent of the drawing.
@@ -62,6 +64,8 @@ Every number in `rules.js` carries the code section it comes from. Read the curr
 - District table covers single-family detached rows of AMC 21.06.020 Table 21.06-1 for the Anchorage Bowl. Chugiak-Eagle River, Girdwood and Downtown are not included.
 - Lot lines and buildings come from GIS, not a survey, and may not show recent construction.
 - The projection (NAD83 Alaska State Plane Zone 4, feet) has not yet been confirmed with MOA GIS.
+- The 2026 aerial photo service is named `Photo_2026_Temp` and its record gives no flight dates. If it is renamed, the page falls back to the 2024 photo until `AERIALS` in `data.js` is updated.
+- Aerial photos are for orientation. Mapped lot lines can sit a few feet off the photo.
 - "Read survey with AI" only appears inside claude.ai. A stand-alone version is Phase 4 of the work order.
 
 ## Licence

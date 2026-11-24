@@ -10,7 +10,7 @@ import {DIST,TYPES,TNAME,L,check,margin,maxAduArea,autoTypes,typesFromEdges,norm
 const $=id=>document.getElementById(id);
 const cv=$("cv"),cx=cv.getContext("2d");
 const S={img:null,iw:760,ih:1000,ftPerPx:null,lot:[],lotClosed:false,types:[],bldgs:[],nb:[],draft:[],mode:"place",
-  adu:{w:20,d:30,x:0,y:0,rot:0},scalePts:[],map:null,mapDirty:true,v:1,ox:0};
+  adu:{w:20,d:30,x:0,y:0,rot:0},scalePts:[],map:null,mapDirty:true,v:1,ox:0,view:"drawing"};
 
 function aduPoly(x,y){return rectPoly(S.adu,x,y,S.ftPerPx)}
 function rules(){const n=id=>Math.max(0,parseFloat($(id).value)||0);const h=n("house");return {front:n("rFront"),side:n("rSide"),rear:n("rRear"),cov:n("rCov"),sep:n("rSep"),tall:$("tall").checked,maxA:maxAduArea(h),house:h}}
@@ -49,16 +49,19 @@ const X=p=>S.ox+p.x*S.v,Y=p=>p.y*S.v;
 function path(p,close){cx.beginPath();p.forEach((q,i)=>i?cx.lineTo(X(q),Y(q)):cx.moveTo(X(q),Y(q)));if(close)cx.closePath()}
 function draw(){
   const w=cv.clientWidth,h=parseFloat(cv.style.height)||0;cx.clearRect(0,0,w,h);cx.fillStyle="#fff";cx.fillRect(0,0,w,h);
-  if(S.img)cx.drawImage(S.img,S.ox,0,S.iw*S.v,S.ih*S.v);
+  // On the aerial photo, lines get a white casing and buildings are outlines only, so the roofs show.
+  const A=S.view==="aerial"&&S.site&&S.site.aerial,bg=A||S.img;
+  const stroke=(c,lw)=>{if(A){cx.strokeStyle="#fff";cx.lineWidth=lw+2.5;cx.stroke()}cx.strokeStyle=c;cx.lineWidth=lw;cx.stroke()};
+  if(bg)cx.drawImage(bg,S.ox,0,S.iw*S.v,S.ih*S.v);
   if(S.mapDirty)buildMap();
   if(S.map&&$("showMap").checked&&S.mode==="place"){const s=S.map.st*S.v;
-    for(const c of S.map.cells){cx.fillStyle=c.ok?"rgba(23,140,80,.30)":"rgba(200,45,35,.22)";cx.fillRect(X(c)-s/2,Y(c)-s/2,s+0.5,s+0.5)}}
+    for(const c of S.map.cells){cx.fillStyle=c.ok?"rgba(23,140,80,.30)":A?"rgba(200,45,35,.13)":"rgba(200,45,35,.22)";cx.fillRect(X(c)-s/2,Y(c)-s/2,s+0.5,s+0.5)}}
   // no-build
   S.nb.forEach(z=>{path(z.pts,true);cx.fillStyle="rgba(217,138,0,.18)";cx.fill();cx.setLineDash([6,4]);cx.strokeStyle="#b36f00";cx.lineWidth=1.5;cx.stroke();cx.setLineDash([])});
   // buildings
-  S.bldgs.forEach((b,i)=>{path(b,true);cx.fillStyle="rgba(90,110,135,.35)";cx.fill();cx.strokeStyle="#3d5068";cx.lineWidth=1.5;cx.stroke();badge(String(i+1),b[0])});
+  S.bldgs.forEach((b,i)=>{path(b,true);if(!A){cx.fillStyle="rgba(90,110,135,.35)";cx.fill()}stroke("#3d5068",1.5);badge(String(i+1),b[0])});
   // lot
-  if(S.lot.length){path(S.lot,S.lotClosed);cx.strokeStyle="#1f5fa8";cx.lineWidth=2.5;cx.stroke();
+  if(S.lot.length){path(S.lot,S.lotClosed);stroke("#1f5fa8",2.5);
     if(S.lotClosed)for(let i=0;i<S.lot.length;i++){const a=S.lot[i],b=S.lot[(i+1)%S.lot.length];chip(L(i)+" · "+TNAME[S.types[i]],{x:(a.x+b.x)/2,y:(a.y+b.y)/2})}}
   // draft
   if(S.draft.length){path(S.draft,false);cx.strokeStyle="#111";cx.lineWidth=1.5;cx.setLineDash([4,3]);cx.stroke();cx.setLineDash([]);
@@ -160,7 +163,9 @@ $("copy").addEventListener("click",async()=>{const r=S.result;if(!r)return;
   setTimeout(()=>$("copied").textContent="",2500)});
 
 /* ---------- loading a survey ---------- */
-function setImage(c){S.img=c;S.iw=c.width;S.ih=c.height;S.ftPerPx=null;S.lot=[];S.lotClosed=false;S.types=[];S.bldgs=[];S.nb=[];S.draft=[];S.scalePts=[];S.bldgArea=null;S.info=null;S.site=null;clearFlagNotes();S.mapDirty=true;layout()}
+function setImage(c){S.img=c;S.iw=c.width;S.ih=c.height;S.ftPerPx=null;S.lot=[];S.lotClosed=false;S.types=[];S.bldgs=[];S.nb=[];S.draft=[];S.scalePts=[];S.bldgArea=null;S.info=null;S.site=null;clearFlagNotes();
+  S.view="drawing";$("viewBox").classList.remove("on");$("viewDrawing").setAttribute("aria-pressed","true");$("viewAerial").setAttribute("aria-pressed","false");$("viewMsg").textContent="";
+  S.mapDirty=true;layout()}
 function toCanvas(src,w,h){const m=1600/Math.max(w,h),k=Math.min(1,m),c=document.createElement("canvas");c.width=Math.round(w*k);c.height=Math.round(h*k);c.getContext("2d").drawImage(src,0,0,c.width,c.height);return c}
 function loadScript(u){return new Promise((res,rej)=>{const s=document.createElement("script");s.src=u;s.onload=res;s.onerror=rej;document.head.appendChild(s)})}
 $("file").addEventListener("change",async e=>{const f=e.target.files[0];if(!f)return;e.target.value="";
@@ -219,24 +224,61 @@ function frontageNote(){const s=S.site,r=s.frontage,ix=k=>s.edges.map((e,i)=>e.k
   if(ix("alley").length)out.push(ls(ix("alley"))+" along an alley: no setback there.");
   if(ix("open").length)out.push(ls(ix("open"))+" faces land with no parcel and no mapped street or alley. Check how it should be labelled.");
   return out.join(" ")}
+// The sheet for a looked-up parcel: title, notice, north arrow and scale bar, drawn on plain
+// paper or over an aerial photo. fr is the sheet frame (data.js sheetBox). The photo sheet is
+// made m times larger than the drawing so the photo stays sharp; draw() scales both alike.
+function paintSheet(info,lotA,fr,photo,m){
+  m=m||1;const {k,my,W,H}=fr,c=document.createElement("canvas");c.width=Math.round(W*m);c.height=Math.round(H*m);const g=c.getContext("2d");g.scale(m,m);
+  if(photo){g.drawImage(photo,0,0,W,H);g.fillStyle="rgba(255,255,255,.9)";g.fillRect(12,12,W-24,102);g.fillRect(W-82,my-16,44,92);g.fillRect(30,H-66,20*k+20,36)}
+  else{g.fillStyle="#fbfbf8";g.fillRect(0,0,W,H)}
+  g.strokeStyle="#222";g.lineWidth=2;g.strokeRect(12,12,W-24,H-24);
+  g.fillStyle="#222";g.textAlign="center";g.font="700 20px Archivo,Arial,sans-serif";g.fillText(info.addr||"Parcel "+info.pid,W/2,48);
+  g.font="12px 'IBM Plex Mono',monospace";g.fillText("Parcel "+info.pid+(info.zone?"   Zoning "+info.zone:"")+"   Lot "+Math.round(lotA).toLocaleString()+" sq ft as mapped",W/2,70);
+  g.fillText("Lot lines and buildings from Municipality of Anchorage GIS.",W/2,88);g.fillText("Not a survey. Screening only.",W/2,104);
+  g.strokeStyle="#222";g.lineWidth=1;g.beginPath();g.moveTo(W-60,my+70);g.lineTo(W-60,my+10);g.lineTo(W-70,my+30);g.moveTo(W-60,my+10);g.lineTo(W-50,my+30);g.stroke();g.font="700 14px Archivo,Arial,sans-serif";g.fillText("N",W-60,my);
+  const bar=20*k;g.lineWidth=3;g.beginPath();g.moveTo(40,H-40);g.lineTo(40+bar,H-40);g.stroke();g.font="11px 'IBM Plex Mono',monospace";g.textAlign="left";g.fillText("20 ft",40,H-48);
+  return c;
+}
+
+/* ---------- aerial photo under the drawing ---------- */
+// The Municipality's own aerial photos (data.js AERIALS), asked for only when "Aerial photo"
+// is pressed. No Google imagery is drawn here: its terms do not allow it. The street view
+// link opens Google Maps in a new tab instead.
+const vmsg=t=>{$("viewMsg").textContent=t};
+function setView(v){S.view=v;$("viewDrawing").setAttribute("aria-pressed",String(v==="drawing"));$("viewAerial").setAttribute("aria-pressed",String(v==="aerial"));draw()}
+function loadImg(url){return new Promise((res,rej)=>{const im=new Image();im.crossOrigin="anonymous";im.onload=()=>res(im);im.onerror=rej;im.src=url})}
+async function showAerial(){const s=S.site;if(!s||!s.frame||s.aerialBusy)return;
+  if(s.aerial){setView("aerial");vmsg(s.aerialNote);return}
+  s.aerialBusy=true;vmsg("Getting the aerial photo…");
+  try{const d=await data(),fr=s.frame,box=d.sheetBox(fr),m=Math.min(2,4096/Math.max(fr.W,fr.H));let got=null;
+    for(const a of d.AERIALS){try{got={a,im:await loadImg(d.aerialUrl(a.url,box,fr.W*m,fr.H*m))};break}catch(e){}}
+    if(S.site!==s)return;   // another address or survey was loaded meanwhile
+    if(!got){vmsg("The aerial photo could not be loaded. Try again in a minute. The drawing still works without it.");return}
+    s.aerial=paintSheet(S.info,s.lotA,fr,got.im,m);
+    s.aerialNote=(got.a!==d.AERIALS[0]?"The "+d.AERIALS[0].year+" photo could not be loaded, so this is the "+got.a.year+" one. ":"")
+      +"Aerial photo: Municipality of Anchorage, flown by EagleView "+got.a.flown+". The photo is for orientation. The mapped lot lines can sit a few feet off it, and it may not show recent construction. Screening only.";
+    setView("aerial");vmsg(s.aerialNote);
+  }catch(e){console.error(e);if(S.site===s)vmsg("The aerial photo could not be loaded. Try again in a minute. The drawing still works without it.")}
+  finally{s.aerialBusy=false}}
+$("viewAerial").addEventListener("click",showAerial);
+$("viewDrawing").addEventListener("click",()=>{setView("drawing");vmsg("")});
+
 function sceneFromGIS(info,site){
   // site coordinates are feet, y down (north up). Lot lines are tidied so each straight line is one edge; buildings are drawn exactly as mapped.
   const lot=clean(site.lot);if(lot.length<3)throw new Error("lot");
   const xs=lot.map(p=>p.x),ys=lot.map(p=>p.y),x0=Math.min(...xs),y0=Math.min(...ys),w=Math.max(...xs)-x0,h=Math.max(...ys)-y0,k=Math.min(8,640/w,760/h),mx=150,my=130;
   const px=p=>({x:(p.x-x0)*k+mx,y:(p.y-y0)*k+my});
   const lotA=area(lot);
-  const c=document.createElement("canvas");c.width=Math.round(w*k+2*mx);c.height=Math.round(h*k+my+110);const g=c.getContext("2d");
-  g.fillStyle="#fbfbf8";g.fillRect(0,0,c.width,c.height);g.strokeStyle="#222";g.lineWidth=2;g.strokeRect(12,12,c.width-24,c.height-24);
-  g.fillStyle="#222";g.textAlign="center";g.font="700 20px Archivo,Arial,sans-serif";g.fillText(info.addr||"Parcel "+info.pid,c.width/2,48);
-  g.font="12px 'IBM Plex Mono',monospace";g.fillText("Parcel "+info.pid+(info.zone?"   Zoning "+info.zone:"")+"   Lot "+Math.round(lotA).toLocaleString()+" sq ft as mapped",c.width/2,70);
-  g.fillText("Lot lines and buildings from Municipality of Anchorage GIS.",c.width/2,88);g.fillText("Not a survey. Screening only.",c.width/2,104);
-  g.strokeStyle="#222";g.lineWidth=1;g.beginPath();g.moveTo(c.width-60,my+70);g.lineTo(c.width-60,my+10);g.lineTo(c.width-70,my+30);g.moveTo(c.width-60,my+10);g.lineTo(c.width-50,my+30);g.stroke();g.font="700 14px Archivo,Arial,sans-serif";g.fillText("N",c.width-60,my);
-  const bar=20*k;g.lineWidth=3;g.beginPath();g.moveTo(40,c.height-40);g.lineTo(40+bar,c.height-40);g.stroke();g.font="11px 'IBM Plex Mono',monospace";g.textAlign="left";g.fillText("20 ft",40,c.height-48);
+  const frame={x0,y0,k,mx,my,W:Math.round(w*k+2*mx),H:Math.round(h*k+my+110)};
+  const c=paintSheet(info,lotA,frame);
   const edges=classifyEdges(lot,site.neighbors,site.lines);
   setImage(c);S.ftPerPx=1/k;S.lot=lot.map(px);S.lotClosed=true;S.info=info;
   S.bldgs=site.bldgs.map(b=>openRing(b.pts).map(px));
   S.bldgArea=site.bldgArea;   // clipped to the lot, holes taken out, in sq ft
-  S.site={edges,lotA};
+  S.site={edges,lotA,frame};
+  $("viewBox").classList.add("on");
+  $("street").href=site.center?"https://www.google.com/maps/@?api=1&map_action=pano&viewpoint="+site.center.lat.toFixed(6)+","+site.center.lon.toFixed(6)
+    :"https://www.google.com/maps/search/?api=1&query="+encodeURIComponent((info.addr||"")+", Anchorage, AK");
   applyFrontage();
   const z=normZone(info.zone);if(DIST[z]){$("dist").value=z;const d=DIST[z];$("rFront").value=d[0];$("rSide").value=d[1];$("rRear").value=d[2];$("rCov").value=d[3]}
   const ce=cen(S.lot);S.adu.x=ce.x;S.adu.y=ce.y;S.mapDirty=true;setMode("place");
