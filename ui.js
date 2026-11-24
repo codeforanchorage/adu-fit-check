@@ -157,7 +157,7 @@ $("best").addEventListener("click",goBest);$("showDim").addEventListener("change
 $("showMap").addEventListener("change",draw);
 document.querySelectorAll(".flag").forEach(c=>c.addEventListener("change",flags));
 $("copy").addEventListener("click",async()=>{const r=S.result;if(!r)return;
-  const t=["ADU Fit Check (screening only, not a zoning determination)",...(S.info?["Parcel "+S.info.pid+", "+S.info.addr+". Lot lines and buildings from Municipality of Anchorage GIS, not a survey."]:[]),"ADU footprint: "+S.adu.w+" x "+S.adu.d+" ft, rotated "+S.adu.rot+" degrees","Result: "+(r.ok?"Fits here":"Does not fit here"),
+  const t=["ADU Fit Check (screening only, not a zoning determination)","Prototype, for ideas and discussion only. Permitting and zoning staff must review any real project.",...(S.info?["Parcel "+S.info.pid+", "+S.info.addr+". Lot lines and buildings from Municipality of Anchorage GIS, not a survey."]:[]),"ADU footprint: "+S.adu.w+" x "+S.adu.d+" ft, rotated "+S.adu.rot+" degrees","Result: "+(r.ok?"Fits here":"Does not fit here"),
     ...r.why.map(w=>"- "+w),"","Checks:",...r.rows.map(o=>(o.ok?"OK  ":"NO  ")+o.name+": "+o.m+" (required "+o.r+")"),"","Other reviews:",...(flags().length?flags().map(x=>"- "+x):["- none checked"]),...(S.flagNotes?["","From the map layers (check these; the layers may be out of date):",...S.flagNotes.map(x=>"- "+x)]:[])].join("\n");
   try{await navigator.clipboard.writeText(t);$("copied").textContent="Copied."}catch(err){$("copied").textContent="Copy was blocked by the browser."}
   setTimeout(()=>$("copied").textContent="",2500)});
@@ -234,7 +234,7 @@ function paintSheet(info,lotA,fr,photo,m){
   g.strokeStyle="#222";g.lineWidth=2;g.strokeRect(12,12,W-24,H-24);
   g.fillStyle="#222";g.textAlign="center";g.font="700 20px Archivo,Arial,sans-serif";g.fillText(info.addr||"Parcel "+info.pid,W/2,48);
   g.font="12px 'IBM Plex Mono',monospace";g.fillText("Parcel "+info.pid+(info.zone?"   Zoning "+info.zone:"")+"   Lot "+Math.round(lotA).toLocaleString()+" sq ft as mapped",W/2,70);
-  g.fillText("Lot lines and buildings from Municipality of Anchorage GIS.",W/2,88);g.fillText("Not a survey. Screening only.",W/2,104);
+  g.fillText("Lot lines and buildings from Municipality of Anchorage GIS.",W/2,88);g.fillText("Prototype. Not a survey. Screening only.",W/2,104);
   g.strokeStyle="#222";g.lineWidth=1;g.beginPath();g.moveTo(W-60,my+70);g.lineTo(W-60,my+10);g.lineTo(W-70,my+30);g.moveTo(W-60,my+10);g.lineTo(W-50,my+30);g.stroke();g.font="700 14px Archivo,Arial,sans-serif";g.fillText("N",W-60,my);
   const bar=20*k;g.lineWidth=3;g.beginPath();g.moveTo(40,H-40);g.lineTo(40+bar,H-40);g.stroke();g.font="11px 'IBM Plex Mono',monospace";g.textAlign="left";g.fillText("20 ft",40,H-48);
   return c;

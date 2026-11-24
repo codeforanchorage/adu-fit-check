@@ -4,6 +4,8 @@ A screening tool for the Municipality of Anchorage. A homeowner looks up an addr
 
 **Results are screening only. Zoning staff make the determination.** That statement stays in the page notice, on the drawn sheet and in the copied summary.
 
+The page is a prototype for ideas and discussion. It says so beside the title, in the notice, under the plan check, on the drawn sheet and in the copied summary, along with the need for permitting and zoning staff to review any real project. Keep those in place.
+
 Live copy: https://www.brendanbabb.com/experiments/adu-fit/
 
 ## What it does

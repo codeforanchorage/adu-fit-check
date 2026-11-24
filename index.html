@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ADU Fit Check</title>
+<title>ADU Fit Check (prototype)</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -37,7 +37,8 @@ body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15p
 header{display:flex;flex-wrap:wrap;gap:8px 20px;align-items:baseline;justify-content:space-between}
 h1{font-family:var(--display);font-weight:700;font-size:26px;margin:0;letter-spacing:-.01em}
 header p{margin:0;color:var(--muted);max-width:62ch}
-.notice{background:var(--warn-bg);color:var(--warn);border-radius:6px;padding:8px 12px;font-size:13.5px}
+.notice{background:var(--warn-bg);color:var(--warn);border-radius:6px;border-left:5px solid var(--warn);padding:10px 14px;font-size:14.5px}
+.proto{font-family:var(--body);font-size:12.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;background:var(--warn-bg);color:var(--warn);border:1px solid var(--warn);border-radius:10px;padding:2px 9px;margin-left:10px;vertical-align:4px}
 .main{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(300px,1fr);gap:16px;align-items:start}
 @media (max-width:900px){.main{grid-template-columns:1fr}}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:8px}
@@ -89,10 +90,10 @@ input[type=range]{width:100%}
 <body>
 <div class="wrap">
   <header>
-    <h1>ADU Fit Check</h1>
+    <h1>ADU Fit Check <span class="proto">Prototype</span></h1>
     <p>Put a survey on the table, drop an ADU on it, and see where it fits. Green fits. Red does not, and the slip on the right says why.</p>
   </header>
-  <div class="notice"><b>Prototype for discussion.</b> The sample survey is made up and the ADU footprints are examples. Setbacks and lot coverage come from the Anchorage zoning code for the district you pick. Results are screening only. Zoning staff make the determination.</div>
+  <div class="notice" role="note"><b>This is a prototype, for ideas and discussion only.</b> It is not a permit, an approval or a zoning determination. Before you rely on anything shown here, the Municipality's permitting and zoning staff need to look at your lot and your plans. The sample survey is made up and the ADU footprints are examples. Setbacks and lot coverage come from the Anchorage zoning code for the district you pick. Results are screening only. Zoning staff make the determination.</div>
 
   <div class="main">
     <section class="panel stage" aria-label="Survey">
@@ -149,6 +150,7 @@ input[type=range]{width:100%}
         <ul class="why" id="why"></ul>
         <table id="checks"><thead><tr><th>Check</th><th class="num">Measured</th><th class="num">Required</th><th></th></tr></thead><tbody></tbody></table>
         <div class="row" style="margin-top:10px"><button id="copy" type="button">Copy summary</button><span id="copied"></span></div>
+        <p class="small">Prototype result, for ideas and discussion. "Fits" is not an approval: permitting and zoning staff must review any real project.</p>
       </section>
 
       <section class="panel card">
