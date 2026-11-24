@@ -1,10 +1,13 @@
 // Live check against the Municipality's services, using the same code the page runs.
 // Not part of `npm test` (it needs the network). Usage:
 //   node tests/live-check.mjs "1400 W 23RD AVE" ["another address" ...]
-// Prints what the page would draw and the plan-check table for a 20 x 30 ft ADU at the best spot.
+// Prints what the page would draw and the plan-check table for each catalog plan (plans.json) at its best spot.
+import {readFileSync} from "node:fs";
 import {findParcels,loadSite,loadFlags,sheetBox,aerialUrl,AERIALS} from "../data.js";
 import {area,clean,openRing,classifyEdges,rectPoly,inside,f1} from "../geometry.js";
 import {DIST,L,check,margin,maxAduArea,typesFromEdges,normZone,flagResults} from "../rules.js";
+
+const PLANS=JSON.parse(readFileSync(new URL("../plans.json",import.meta.url),"utf8")).plans;
 
 for(const q of process.argv.slice(2)){
   console.log("\n=== "+q);
@@ -29,13 +32,16 @@ for(const q of process.argv.slice(2)){
   const fl=flagResults(await loadFlags(p));
   for(const k of ["seis","flood","slope","septic"])console.log("  flag "+k.padEnd(7)+(fl[k].tick===true?"TICK ":fl[k].tick===false?"clear":"?    ")+" "+fl[k].text+(fl[k].source?" ["+fl[k].source+"]":""));
   const d=DIST[normZone(p.zone)];if(!d){console.log("district not in DIST: setbacks by hand");continue}
-  const S={ftPerPx:1,lot,types:fr.types,bldgs:site.bldgs.map(b=>openRing(b.pts)),nb:[],bldgArea:site.bldgArea,adu:{w:20,d:30,rot:0}};
-  const R={front:d[0],side:d[1],rear:d[2],cov:d[3],sep:0,tall:false,maxA:maxAduArea(0),house:0};
-  const xs=lot.map(p=>p.x),ys=lot.map(p=>p.y);let best=null;
-  for(const rot of [0,90])for(let y=Math.min(...ys);y<Math.max(...ys);y+=2)for(let x=Math.min(...xs);x<Math.max(...xs);x+=2){
-    if(!inside({x,y},lot))continue;S.adu.rot=rot;const poly=rectPoly(S.adu,x,y,1);if(!check(S,poly,R,true).ok)continue;const m=margin(S,poly,R);if(!best||m>best.m)best={m,x,y,rot}}
-  if(!best){S.adu.rot=0;const c=check(S,rectPoly(S.adu,(Math.min(...xs)+Math.max(...xs))/2,(Math.min(...ys)+Math.max(...ys))/2,1),R,false);console.log("20 x 30 ADU: no spot fits (2 ft grid, 0 and 90 degrees). At the lot centre: "+c.why.join(" "));continue}
-  S.adu.rot=best.rot;const r=check(S,rectPoly(S.adu,best.x,best.y,1),R,false);
-  console.log("20 x 30 ADU, best spot (rot "+best.rot+", "+f1(best.m)+" ft to spare): "+(r.ok?"FITS":"DOES NOT FIT"));
-  r.rows.forEach(o=>console.log("   "+(o.ok?"OK ":"NO ")+o.name.padEnd(28)+o.m.padStart(10)+"   required "+o.r));
+  for(const pl of PLANS){
+    const tag=pl.name+", "+(pl.approx?"about ":"")+pl.w+" x "+pl.d+" ft, "+pl.floorArea+" sq ft unit";
+    const S={ftPerPx:1,lot,types:fr.types,bldgs:site.bldgs.map(b=>openRing(b.pts)),nb:[],bldgArea:site.bldgArea,adu:{w:pl.w,d:pl.d,rot:0,floorArea:pl.floorArea}};
+    const R={front:d[0],side:d[1],rear:d[2],cov:d[3],sep:0,tall:false,maxA:maxAduArea(0),house:0};
+    const xs=lot.map(p=>p.x),ys=lot.map(p=>p.y);let best=null;
+    for(const rot of [0,90])for(let y=Math.min(...ys);y<Math.max(...ys);y+=2)for(let x=Math.min(...xs);x<Math.max(...xs);x+=2){
+      if(!inside({x,y},lot))continue;S.adu.rot=rot;const poly=rectPoly(S.adu,x,y,1);if(!check(S,poly,R,true).ok)continue;const m=margin(S,poly,R);if(!best||m>best.m)best={m,x,y,rot}}
+    if(!best){S.adu.rot=0;const c=check(S,rectPoly(S.adu,(Math.min(...xs)+Math.max(...xs))/2,(Math.min(...ys)+Math.max(...ys))/2,1),R,false);console.log(tag+": no spot fits (2 ft grid, 0 and 90 degrees). At the lot centre: "+c.why.join(" "));continue}
+    S.adu.rot=best.rot;const r=check(S,rectPoly(S.adu,best.x,best.y,1),R,false);
+    console.log(tag+", best spot (rot "+best.rot+", "+f1(best.m)+" ft to spare): "+(r.ok?"FITS":"DOES NOT FIT"));
+    r.rows.forEach(o=>console.log("   "+(o.ok?"OK ":"NO ")+o.name.padEnd(38)+o.m.padStart(10)+"   required "+o.r));
+  }
 }

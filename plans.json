@@ -1,0 +1,41 @@
+{
+  "about": "Pre-approved ADU plans from the Municipality of Anchorage catalog. Names, designers, floor areas and where each plan may be used are as printed on the Municipality's plan cover sheets. The cover sheets do not print width, depth or height. Until the Municipality supplies them, w and d (feet) are estimates scaled from the floor-plan drawing on each cover sheet and its printed floor area, and are marked approx: true. When the real dimensions arrive, replace w and d, set approx to false and update dimSource.",
+  "source": "https://www.muni.org/ADU",
+  "read": "2026-11-24",
+  "plans": [
+    {
+      "id": "near-point",
+      "name": "The Near Point",
+      "kind": "Small one-bedroom unit, one story",
+      "designer": "WILMWORKS",
+      "w": 27.5,
+      "d": 17,
+      "approx": true,
+      "dimSource": "Estimate. The floor-plan drawing on the cover sheet is about 1.62 times as wide as it is deep, and the sheet gives 460 sq ft.",
+      "floorArea": 460,
+      "floorAreaSource": "Cover sheet: a 460 SF one-bedroom unit.",
+      "stories": 1,
+      "overGarage": false,
+      "height": null,
+      "areas": "Anchorage, Girdwood and Chugiak-Eagle River",
+      "sheet": "https://www.muni.org/Documents/Departments/Public%20Works%20and%20Infrastructure/Development%20Services%20home/Pre-Approved%20ADUs/Near%20Point%20Cover%20Sheet.pdf"
+    },
+    {
+      "id": "williwaw",
+      "name": "The Williwaw",
+      "kind": "One-bedroom unit over a two-car garage, two stories",
+      "designer": "workshop AD",
+      "w": 32,
+      "d": 25.5,
+      "approx": true,
+      "dimSource": "Estimate. The second-floor drawing on the cover sheet is about 1.26 times as wide as it is deep, and the sheet gives 811 sq ft for that floor, which covers the garage, entry and porch below.",
+      "floorArea": 811,
+      "floorAreaSource": "Cover sheet: an 811 SF apartment over a 563 SF garage and a 176 SF entryway. AMC 21.05.070D.1 does not count a related garage. Whether the entryway counts has not been confirmed with Development Services.",
+      "stories": 2,
+      "overGarage": true,
+      "height": null,
+      "areas": "Anchorage, Girdwood and Chugiak-Eagle River",
+      "sheet": "https://www.muni.org/Documents/Departments/Public%20Works%20and%20Infrastructure/Development%20Services%20home/Pre-Approved%20ADUs/Williwaw%20Cover%20Sheet.pdf"
+    }
+  ]
+}

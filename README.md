@@ -14,6 +14,7 @@ Live copy: https://www.brendanbabb.com/experiments/adu-fit/
 - After a lookup, the "other reviews" boxes for seismic zone, flood zone and slope are filled from the Municipality's map layers, with the layer and its date shown under each.
 - After a lookup, a Drawing / Aerial photo switch puts the Municipality's own aerial photo under the lot lines (2026, or 2024 if that one does not load), and a link opens street view in Google Maps in a new tab. No Google imagery is drawn in the page.
 - Upload of a survey image or PDF, traced by hand: scale, lot lines, buildings, no-build areas.
+- ADU designs come from the Municipality's pre-approved plan catalog (`plans.json`), with a custom size as well.
 - Plan check: setbacks by lot-line type, alley exemption, overlap with buildings and no-build areas, lot coverage, ADU floor area.
 - The plan-check table is the text equivalent of the drawing.
 
@@ -28,6 +29,7 @@ It never requests or shows owner names or mailing addresses.
 | `geometry.js` | Pure geometry functions |
 | `rules.js` | Zoning numbers (`DIST`) and the plan check (`check()`), each with its Anchorage Municipal Code citation |
 | `data.js` | ArcGIS REST queries and clipping buildings to the lot |
+| `plans.json` | The pre-approved ADU plans: name, designer, footprint, floor area, and where each number comes from |
 | `tests/` | Vitest unit tests, and `live-check.mjs` for checking an address from the command line |
 | `build_deploy.py` | Builds the upload folder for DreamHost |
 | `ADU_FIT_CHECK_TASK.md` | The work order, by phase |
@@ -61,8 +63,15 @@ python build_deploy.py --verify   # compares the live files with the build
 
 Every number in `rules.js` carries the code section it comes from. Read the current section before changing one, and update the citation in the comment and in the page text together.
 
+## Updating the plan catalog
+
+The plans are in `plans.json`, read from www.muni.org/ADU on 2026-11-24. The Municipality's cover sheets give each plan's floor area but print no width, depth or height, so `w` and `d` are estimates scaled from the cover sheet drawings and are marked `"approx": true`. The page says so wherever a plan is shown. When the real dimensions arrive (the "Not for Construction" plan set, or Development Services), replace `w` and `d`, set `approx` to `false` and update `dimSource`. A plan that is not a rectangle will need polygon footprints, which are not built yet.
+
 ## Known limits
 
+- Plan footprints are estimates (see above), so distances for a catalog plan may be off by a foot or two.
+- ADU height (25 ft, or 30 ft over a garage, AMC 21.05.070D.1) is not checked: no plan height is published.
+- The Williwaw's floor area is taken as the 811 sq ft on its sheet. Whether its 176 sq ft entryway also counts has not been confirmed.
 - District table covers single-family detached rows of AMC 21.06.020 Table 21.06-1 for the Anchorage Bowl. Chugiak-Eagle River, Girdwood and Downtown are not included.
 - Lot lines and buildings come from GIS, not a survey, and may not show recent construction.
 - The projection (NAD83 Alaska State Plane Zone 4, feet) has not yet been confirmed with MOA GIS.

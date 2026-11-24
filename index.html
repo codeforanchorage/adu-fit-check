@@ -93,7 +93,7 @@ input[type=range]{width:100%}
     <h1>ADU Fit Check <span class="proto">Prototype</span></h1>
     <p>Put a survey on the table, drop an ADU on it, and see where it fits. Green fits. Red does not, and the slip on the right says why.</p>
   </header>
-  <div class="notice" role="note"><b>This is a prototype, for ideas and discussion only.</b> It is not a permit, an approval or a zoning determination. Before you rely on anything shown here, the Municipality's permitting and zoning staff need to look at your lot and your plans. The sample survey is made up and the ADU footprints are examples. Setbacks and lot coverage come from the Anchorage zoning code for the district you pick. Results are screening only. Zoning staff make the determination.</div>
+  <div class="notice" role="note"><b>This is a prototype, for ideas and discussion only.</b> It is not a permit, an approval or a zoning determination. Before you rely on anything shown here, the Municipality's permitting and zoning staff need to look at your lot and your plans. The sample survey is made up. The ADU plans are from the Municipality's pre-approved catalog, but their footprints here are estimates, because the plan sheets print no dimensions. Setbacks and lot coverage come from the Anchorage zoning code for the district you pick. Results are screening only. Zoning staff make the determination.</div>
 
   <div class="main">
     <section class="panel stage" aria-label="Survey">
@@ -158,14 +158,12 @@ input[type=range]{width:100%}
         <div class="grid2">
           <label style="grid-column:1/-1">Footprint
             <select id="design">
-              <option value="16x24">Studio, 16 × 24 ft (384 sq ft)</option>
-              <option value="20x30" selected>One bedroom, 20 × 30 ft (600 sq ft)</option>
-              <option value="24x36">Two bedroom, 24 × 36 ft (864 sq ft)</option>
-              <option value="custom">Custom size</option>
+              <option value="custom" selected>Custom size</option>
             </select>
           </label>
-          <label>Width (ft)<input type="number" id="aw" min="8" max="60" value="20"></label>
-          <label>Depth (ft)<input type="number" id="ad" min="8" max="60" value="30"></label>
+          <p class="small" id="planNote" style="grid-column:1/-1;margin:0" aria-live="polite"></p>
+          <label>Width (ft)<input type="number" id="aw" min="8" max="60" step="0.5" value="20"></label>
+          <label>Depth (ft)<input type="number" id="ad" min="8" max="60" step="0.5" value="30"></label>
           <label style="grid-column:1/-1">Rotation <span id="rotv" style="font-family:var(--mono)">0°</span>
             <input type="range" id="rot" min="0" max="175" step="5" value="0">
           </label>
@@ -191,7 +189,7 @@ input[type=range]{width:100%}
           <label>Gap from buildings (ft)<input type="number" id="rSep" min="0" value="0"></label>
           <label>Main house floor area (sq ft)<input type="number" id="house" min="0" placeholder="optional"></label>
         </div>
-        <p class="small">District values are for a single-family detached home, from Table 21.06-1 in AMC 21.06.020. Chugiak-Eagle River, Girdwood and Downtown have their own tables and are not included. On a lot with more than one street side, every street line gets the full front setback and there is no rear setback (AMC 21.06.030C.4); the zoning director decides the setbacks on such a lot. ADU rules come from AMC 21.05.070D.1: same setbacks as the district, no setback on a side or rear line next to an alley, house plus all accessory buildings within the lot coverage limit, and floor area up to 900 sq ft or 40% of the main house, whichever is greater, never over 1,200 sq ft. In R-1 and R-1A, lots under 10,000 sq ft may go to 50% coverage when the whole house is under 16 ft tall. The gap from buildings is not a zoning rule; set it if your reviewer asks for one.</p>
+        <p class="small">District values are for a single-family detached home, from Table 21.06-1 in AMC 21.06.020. Chugiak-Eagle River, Girdwood and Downtown have their own tables and are not included. On a lot with more than one street side, every street line gets the full front setback and there is no rear setback (AMC 21.06.030C.4); the zoning director decides the setbacks on such a lot. ADU rules come from AMC 21.05.070D.1: same setbacks as the district, no setback on a side or rear line next to an alley, house plus all accessory buildings within the lot coverage limit, and floor area, not counting a related garage, up to 900 sq ft or 40% of the main house, whichever is greater, never over 1,200 sq ft. The same section limits an ADU to 25 ft in height, or 30 ft over a garage; this page does not check height. In R-1 and R-1A, lots under 10,000 sq ft may go to 50% coverage when the whole house is under 16 ft tall. The gap from buildings is not a zoning rule; set it if your reviewer asks for one.</p>
       </section>
 
       <section class="panel card" aria-live="polite">
@@ -211,7 +209,7 @@ input[type=range]{width:100%}
 
       <section class="panel card">
         <h2>What a full version would add</h2>
-        <p style="margin:0">Footprints come from the pre-approved plan catalog. Existing surveys on file with the Municipality load without an upload. The result is a one-page slip to bring to the zoning review meeting and hand to your surveyor.</p>
+        <p style="margin:0">Footprints use the exact dimensions from the pre-approved plan sets. Existing surveys on file with the Municipality load without an upload. The result is a one-page slip to bring to the zoning review meeting and hand to your surveyor.</p>
       </section>
     </aside>
   </div>

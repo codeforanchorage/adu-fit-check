@@ -29,11 +29,13 @@ function buildMap(){
 function bestSpot(){if(!ready())return null;const R=rules();if(!globalOk(R))return null;const g=gridPts(),keep=S.adu.rot;let best=null;
   for(const rot of [keep,(keep+90)%180]){S.adu.rot=rot;for(const p of g.pts){const poly=aduPoly(p.x,p.y);if(!check(S,poly,R,true).ok)continue;const m=margin(S,poly,R);if(!best||m>best.m+(rot===keep?0:0.5))best={m,x:p.x,y:p.y,rot}}}
   S.adu.rot=keep;return best}
-const PRESETS=[["Studio",16,24],["One bedroom",20,30],["Two bedroom",24,36]];
+// The Municipality's pre-approved plans, from plans.json (loadPlans below). Empty until it
+// loads, and it stays empty if it cannot be read: "Custom size" still works without it.
+let PLANS=[];
 function computeFits(){const box=$("fits");box.innerHTML="";if(!ready()){return}const keep={...S.adu};
-  PRESETS.forEach(([n,w,d])=>{S.adu.w=w;S.adu.d=d;const b=bestSpot();const btn=document.createElement("button");btn.type="button";btn.className="fitbtn";
-    const t=document.createElement("span");t.textContent=n+" "+w+" × "+d;const g=document.createElement("span");g.className="tag "+(b?"ok":"bad");g.textContent=b?"Fits":"No spot";btn.append(t,g);
-    btn.addEventListener("click",()=>{$("design").value=w+"x"+d;design();goBest()});box.appendChild(btn)});
+  PLANS.forEach(p=>{S.adu.w=p.w;S.adu.d=p.d;S.adu.floorArea=p.floorArea;const b=bestSpot();const btn=document.createElement("button");btn.type="button";btn.className="fitbtn";
+    const t=document.createElement("span");t.textContent=p.name+" "+(p.approx?"about ":"")+p.w+" × "+p.d;const g=document.createElement("span");g.className="tag "+(b?"ok":"bad");g.textContent=b?"Fits":"No spot";btn.append(t,g);
+    btn.addEventListener("click",()=>{$("design").value=p.id;design();goBest()});box.appendChild(btn)});
   Object.assign(S.adu,keep)}
 function goBest(){const b=bestSpot();if(!b){$("bestMsg").textContent="No spot fits this footprint. Try a smaller one or a different rotation.";return}
   $("bestMsg").textContent="Placed with "+f1(Math.max(0,b.m))+" ft to spare.";S.adu.x=b.x;S.adu.y=b.y;S.adu.rot=b.rot;$("rot").value=b.rot;$("rotv").textContent=b.rot+"°";S.mapDirty=true;if(S.mode!=="place")setMode("place");else update()}
@@ -76,7 +78,7 @@ function draw(){
   if(ready()&&S.mode==="place"){const p=aduPoly(S.adu.x,S.adu.y),r=S.result;const ok=r&&r.ok;
     path(p,true);cx.fillStyle=ok?"rgba(23,140,80,.55)":"rgba(200,45,35,.55)";cx.fill();cx.strokeStyle=ok?"#0e5a35":"#8c1c16";cx.lineWidth=2.5;cx.stroke();
     cx.fillStyle="#fff";cx.font="600 13px 'IBM Plex Sans',sans-serif";cx.textAlign="center";cx.textBaseline="middle";
-    cx.fillText("ADU "+S.adu.w+" × "+S.adu.d,X(S.adu),Y(S.adu)-8);cx.fillText(ok?"Fits":"Does not fit",X(S.adu),Y(S.adu)+9)}
+    cx.fillText((S.adu.plan?S.adu.plan.name.replace(/^The /,""):"ADU")+" "+S.adu.w+" × "+S.adu.d,X(S.adu),Y(S.adu)-8);cx.fillText(ok?"Fits":"Does not fit",X(S.adu),Y(S.adu)+9)}
 }
 function label(t,p,c){cx.font="500 11px 'IBM Plex Sans',sans-serif";cx.textAlign="center";cx.textBaseline="middle";cx.fillStyle=c;cx.fillText(t,X(p),Y(p))}
 function badge(t,p){cx.beginPath();cx.arc(X(p),Y(p),9,0,7);cx.fillStyle="#3d5068";cx.fill();cx.font="600 11px 'IBM Plex Sans',sans-serif";cx.fillStyle="#fff";cx.textAlign="center";cx.textBaseline="middle";cx.fillText(t,X(p),Y(p)+0.5)}
@@ -144,8 +146,27 @@ $("scaleApply").addEventListener("click",()=>{const ft=parseFloat($("scaleFt").v
   const d=Math.hypot(S.scalePts[0].x-S.scalePts[1].x,S.scalePts[0].y-S.scalePts[1].y);if(d<2)return;S.ftPerPx=ft/d;S.mapDirty=true;setMode(S.lotClosed?"place":"lot")});
 
 /* ---------- controls ---------- */
-function design(){const v=$("design").value;if(v!=="custom"){const [w,d]=v.split("x").map(Number);$("aw").value=w;$("ad").value=d}
-  S.adu.w=Math.max(8,Math.min(60,parseFloat($("aw").value)||20));S.adu.d=Math.max(8,Math.min(60,parseFloat($("ad").value)||30));S.mapDirty=true;update()}
+function design(){const p=PLANS.find(p=>p.id===$("design").value)||null;if(p){$("aw").value=p.w;$("ad").value=p.d}
+  S.adu.w=Math.max(8,Math.min(60,parseFloat($("aw").value)||20));S.adu.d=Math.max(8,Math.min(60,parseFloat($("ad").value)||30));
+  S.adu.plan=p;S.adu.floorArea=p?p.floorArea:null;planNote(p);S.mapDirty=true;update()}
+// What the page says about the chosen plan, and where its numbers come from.
+function planNote(p){const el=$("planNote");el.textContent="";if(!p)return;
+  el.appendChild(document.createTextNode(p.kind+". Designed by "+p.designer+". Floor area "+p.floorArea.toLocaleString()+" sq ft on the Municipality's plan sheet"+(p.overGarage?", not counting the garage":"")+". "
+    +(p.approx?"The footprint, about "+p.w+" × "+p.d+" ft, is an estimate scaled from the drawing on that sheet, which prints no dimensions. Distances shown here may be off by a foot or two. ":"")
+    +(p.stories>1?"This plan is "+(p.stories===2?"two":p.stories)+" stories. If a neighbouring lot is R-1 or R-1A, tick the 10 ft side setback box below. ":"")
+    +"The sheet says: suited for use in "+p.areas+". "));
+  const a=document.createElement("a");a.href=p.sheet;a.target="_blank";a.rel="noopener noreferrer";a.textContent="Plan sheet on muni.org (PDF, new tab)";el.appendChild(a)}
+async function loadPlans(){
+  try{const r=await fetch("./plans.json");if(!r.ok)throw new Error("HTTP "+r.status);const j=await r.json();
+    PLANS=(j.plans||[]).filter(p=>p&&p.id&&p.name&&p.w>0&&p.d>0&&p.floorArea>0);
+  }catch(e){console.error(e);PLANS=[]}
+  if(!PLANS.length){$("planNote").textContent="The pre-approved plan list could not be loaded. Type a width and depth instead.";return}
+  const sel=$("design"),custom=sel.querySelector('option[value="custom"]');
+  PLANS.forEach(p=>{const o=document.createElement("option");o.value=p.id;o.textContent=p.name+", "+(p.approx?"about ":"")+p.w+" × "+p.d+" ft ("+p.floorArea.toLocaleString()+" sq ft unit)";sel.insertBefore(o,custom)});
+  // start on the first plan unless a size has already been typed
+  if($("aw").value==="20"&&$("ad").value==="30"){sel.value=PLANS[0].id;design();if(ready()&&!S.info){const b=bestSpot();if(b){S.adu.x=b.x;S.adu.y=b.y;S.adu.rot=b.rot;$("rot").value=b.rot;$("rotv").textContent=b.rot+"°";S.mapDirty=true;update()}}}
+  else{S.mapDirty=true;update()}
+}
 $("design").addEventListener("change",design);
 ["aw","ad"].forEach(id=>$(id).addEventListener("input",()=>{$("design").value="custom";design()}));
 $("rot").addEventListener("input",()=>{$("bestMsg").textContent="";S.adu.rot=+$("rot").value;$("rotv").textContent=S.adu.rot+"°";S.mapDirty=true;update()});
@@ -157,7 +178,8 @@ $("best").addEventListener("click",goBest);$("showDim").addEventListener("change
 $("showMap").addEventListener("change",draw);
 document.querySelectorAll(".flag").forEach(c=>c.addEventListener("change",flags));
 $("copy").addEventListener("click",async()=>{const r=S.result;if(!r)return;
-  const t=["ADU Fit Check (screening only, not a zoning determination)","Prototype, for ideas and discussion only. Permitting and zoning staff must review any real project.",...(S.info?["Parcel "+S.info.pid+", "+S.info.addr+". Lot lines and buildings from Municipality of Anchorage GIS, not a survey."]:[]),"ADU footprint: "+S.adu.w+" x "+S.adu.d+" ft, rotated "+S.adu.rot+" degrees","Result: "+(r.ok?"Fits here":"Does not fit here"),
+  const t=["ADU Fit Check (screening only, not a zoning determination)","Prototype, for ideas and discussion only. Permitting and zoning staff must review any real project.",...(S.info?["Parcel "+S.info.pid+", "+S.info.addr+". Lot lines and buildings from Municipality of Anchorage GIS, not a survey."]:[]),...(S.adu.plan?["Plan: "+S.adu.plan.name+", from the Municipality's pre-approved ADU catalog (www.muni.org/ADU)."+(S.adu.plan.approx?" Its footprint here is an estimate scaled from the plan sheet, which prints no dimensions.":"")]:[]),
+    "ADU footprint: "+(S.adu.plan&&S.adu.plan.approx?"about ":"")+S.adu.w+" x "+S.adu.d+" ft, rotated "+S.adu.rot+" degrees","Result: "+(r.ok?"Fits here":"Does not fit here"),
     ...r.why.map(w=>"- "+w),"","Checks:",...r.rows.map(o=>(o.ok?"OK  ":"NO  ")+o.name+": "+o.m+" (required "+o.r+")"),"","Other reviews:",...(flags().length?flags().map(x=>"- "+x):["- none checked"]),...(S.flagNotes?["","From the map layers (check these; the layers may be out of date):",...S.flagNotes.map(x=>"- "+x)]:[])].join("\n");
   try{await navigator.clipboard.writeText(t);$("copied").textContent="Copied."}catch(err){$("copied").textContent="Copy was blocked by the browser."}
   setTimeout(()=>$("copied").textContent="",2500)});
@@ -348,5 +370,5 @@ function sample(){
 }
 $("sample").addEventListener("click",sample);
 window.addEventListener("resize",()=>{layout();draw()});
-flags();sample();
+flags();sample();loadPlans();
 if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>{if(S.ftPerPx===1/6&&S.bldgs.length===2&&S.img&&S.img.width===760){const a={...S.adu},m=S.mode;sample();Object.assign(S.adu,a);setMode(m)}});

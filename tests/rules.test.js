@@ -1,4 +1,5 @@
 import {describe,it,expect} from "vitest";
+import {readFileSync} from "node:fs";
 import {rectPoly} from "../geometry.js";
 import {DIST,check,margin,reqFor,maxAduArea,normZone,autoTypes,typesFromEdges,flagResults,fmtDate,FLAG_RULES} from "../rules.js";
 
@@ -198,6 +199,33 @@ describe("lot coverage (AMC 21.05.070D.1: house plus all accessory buildings)",(
   it("the district cap is used: R-5 is 30%",()=>{
     const S=scene({bldgs:[box(10,60,50,120)]});
     expect(check(S,at(S,30,30),R1({cov:DIST["R-5"][3]}),false).ok).toBe(false);
+  });
+});
+
+describe("catalog plans (plans.json)",()=>{
+  const plans=JSON.parse(readFileSync(new URL("../plans.json",import.meta.url),"utf8")).plans;
+  it("every plan has what the page needs, and says where its size comes from",()=>{
+    expect(plans.length).toBeGreaterThan(0);
+    expect(new Set(plans.map(p=>p.id)).size).toBe(plans.length);
+    for(const p of plans){
+      expect(p.name&&p.designer&&p.kind&&p.areas).toBeTruthy();
+      expect(p.w).toBeGreaterThanOrEqual(8);expect(p.w).toBeLessThanOrEqual(60);expect(p.d).toBeGreaterThanOrEqual(8);expect(p.d).toBeLessThanOrEqual(60);
+      expect(p.floorArea).toBeGreaterThan(0);expect(p.floorArea).toBeLessThanOrEqual(1200);   // AMC 21.05.070D.1 ceiling
+      expect(typeof p.approx).toBe("boolean");expect(p.dimSource.length).toBeGreaterThan(10);expect(p.floorAreaSource.length).toBeGreaterThan(10);
+      expect(p.sheet.startsWith("https://www.muni.org/")).toBe(true);
+    }
+  });
+  it("floor area comes from the plan, lot coverage from the footprint",()=>{
+    // a 30 x 40 ft footprint (1,200 sq ft on the ground) holding a 700 sq ft unit over a garage
+    const S=scene({lot:box(0,0,200,200),types:autoTypes(box(0,0,200,200)),adu:{w:30,d:40,rot:0,floorArea:700}});
+    const r=check(S,at(S,100,100),R1({house:1000,maxA:maxAduArea(1000)}),false);
+    expect(row(r,"ADU floor area").name).toBe("ADU floor area (from the plan sheet)");
+    expect(row(r,"ADU floor area").m).toBe("700 sq ft");expect(row(r,"ADU floor area").ok).toBe(true);   // 700 is within 900
+    expect(row(r,"Lot coverage").m).toBe("3.0%");                                                       // 1,200 of 40,000
+    // the same footprint typed in by hand is taken as one story: 1,200 sq ft, over the 900 allowed
+    const H=scene({lot:box(0,0,200,200),types:autoTypes(box(0,0,200,200)),adu:{w:30,d:40,rot:0}});
+    const h=check(H,at(H,100,100),R1({house:1000,maxA:maxAduArea(1000)}),false);
+    expect(row(h,"ADU floor area").name).toBe("ADU floor area (one story)");expect(row(h,"ADU floor area").ok).toBe(false);
   });
 });
 

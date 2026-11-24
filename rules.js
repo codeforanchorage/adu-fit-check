@@ -73,7 +73,8 @@ export function typesFromEdges(lot,edges){
 }
 
 // The plan check.
-//   scene  {ftPerPx, lot, types, bldgs, nb:[{pts,label}], bldgArea (sq ft or null), adu:{w,d}}
+//   scene  {ftPerPx, lot, types, bldgs, nb:[{pts,label}], bldgArea (sq ft or null),
+//           adu:{w,d, floorArea (sq ft, only for a catalog plan)}}
 //   poly   the ADU outline in scene units
 //   R      {front, side, rear, cov, sep, tall, maxA, house}
 //   quick  stop at the first failure and return {ok:false} (used for the fit map)
@@ -102,11 +103,17 @@ export function check(scene,poly,R,quick){
   if(quick&&!ok)return {ok:false};
   S.nb.forEach(z=>{const hit=polyPoly(poly,z.pts)===0;if(hit)fail("Sits on a "+z.label.toLowerCase()+".");
     rows.push({name:z.label,m:hit?"overlaps":"clear",r:"no overlap",ok:!hit})});
-  const lotA=area(S.lot)*f*f,bA=S.bldgArea!=null?S.bldgArea:S.bldgs.reduce((s,b)=>s+area(b),0)*f*f,aA=S.adu.w*S.adu.d,cov=(bA+aA)/lotA*100,covOk=cov<=R.cov+0.05;
+  let aA=S.adu.w*S.adu.d;
+  const lotA=area(S.lot)*f*f,bA=S.bldgArea!=null?S.bldgArea:S.bldgs.reduce((s,b)=>s+area(b),0)*f*f,cov=(bA+aA)/lotA*100,covOk=cov<=R.cov+0.05;
   if(!covOk)fail("Lot coverage would be "+f1(cov)+"%. The limit is "+R.cov+"%. A smaller footprint could fit.");
   rows.push({name:"Lot coverage with ADU",m:f1(cov)+"%",r:"≤ "+R.cov+"%",ok:covOk});
+  // AMC 21.05.070D.1.b.iii(B)(4): the size limit is on the gross floor area of the ADU, "not
+  // including any related garage". A catalog plan gives its own floor area (plans.json), which
+  // can differ from its footprint: a unit over a garage, or two stories. A hand-entered size
+  // is taken as one story, so its floor area is its footprint.
+  const own=S.adu.floorArea!=null;if(own)aA=S.adu.floorArea;
   const szOk=aA<=R.maxA+0.5;if(!szOk)fail("Floor area is "+aA+" sq ft. The limit for this lot is "+Math.round(R.maxA).toLocaleString()+" sq ft"+(R.house?" (900 sq ft or 40% of the main house, whichever is greater, up to 1,200)":"")+".");
-  rows.push({name:"ADU floor area (one story)",m:aA+" sq ft",r:"≤ "+Math.round(R.maxA).toLocaleString()+" sq ft",ok:szOk});
+  rows.push({name:own?"ADU floor area (from the plan sheet)":"ADU floor area (one story)",m:aA+" sq ft",r:"≤ "+Math.round(R.maxA).toLocaleString()+" sq ft",ok:szOk});
   return {ok,rows,why,lotA,cov};
 }
 

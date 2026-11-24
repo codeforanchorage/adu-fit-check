@@ -19,7 +19,7 @@ LIVE = "https://www.brendanbabb.com/experiments/adu-fit/"
 
 # Everything the page loads from its own folder. Tests, package files and the work order
 # stay out. If index.html or a module starts loading another local file, add it here.
-FILES = ["index.html", "ui.js", "geometry.js", "rules.js", "data.js"]
+FILES = ["index.html", "ui.js", "geometry.js", "rules.js", "data.js", "plans.json"]
 
 README = """How to put these on DreamHost
 =============================
@@ -28,7 +28,7 @@ README = """How to put these on DreamHost
    web directory:
 
      - Panel > Files > File Manager: drag the whole folder's contents in, or
-     - SFTP/SSH:  scp index.html *.js README-UPLOAD.txt user@server.dreamhost.com:~/yourdomain.com/experiments/adu-fit/
+     - SFTP/SSH:  scp index.html *.js plans.json README-UPLOAD.txt user@server.dreamhost.com:~/yourdomain.com/experiments/adu-fit/
 
    The page has no dependency on its location: every path in it is relative.
    It needs no PHP and no database.
@@ -77,7 +77,7 @@ def build():
     # scripts. So every local script reference in the upload copy gets ?v=<stamp>, where the
     # stamp changes whenever any site file changes. The files in the repo are left as they are.
     stamp = md5("".join(texts[n] for n in FILES).encode("utf-8"))[:8]
-    scripts = [n for n in FILES if n.endswith(".js")]
+    scripts = [n for n in FILES if n.endswith((".js", ".json"))]
     stamped = 0
     for name in FILES:
         text = texts[name]
@@ -89,11 +89,11 @@ def build():
         open(os.path.join(DEPLOY, name), "w", encoding="utf-8", newline="\n").write(text)
         sums.append(f"   {md5(text.encode('utf-8'))}  {name}")
         # every local module the page imports must be in the upload
-        for other in ("ui.js", "geometry.js", "rules.js", "data.js"):
+        for other in ("ui.js", "geometry.js", "rules.js", "data.js", "plans.json"):
             if ('"./' + other in text or 'src="' + other in text) and other not in FILES:
                 sys.exit(f"{name} loads {other}, which is not in FILES")
-    if stamped < 5:
-        sys.exit(f"only {stamped} script references were stamped; expected at least 5. Has the way scripts are loaded changed?")
+    if stamped < 7:
+        sys.exit(f"only {stamped} script references were stamped; expected at least 7. Has the way scripts are loaded changed?")
     print(f"version stamp {stamp} on {stamped} script references")
     open(os.path.join(DEPLOY, "README-UPLOAD.txt"), "w", encoding="utf-8", newline="\n").write(
         README.format(live=LIVE, sums="\n".join(sums)))
