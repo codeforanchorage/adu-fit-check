@@ -1,0 +1,300 @@
+// ui.js: the page. Canvas drawing, tracing tools, controls, address lookup, sample survey.
+// Geometry is in geometry.js, zoning numbers and the plan check in rules.js, map services in data.js.
+//
+// Results are screening only. Zoning staff make the determination. Keep that statement in
+// the page notice, on the drawn sheet and in the copied summary.
+
+import {area,inside,ptSeg,cen,rectPoly,clean,openRing,classifyEdges,f1} from "./geometry.js";
+import {DIST,TYPES,TNAME,L,check,margin,maxAduArea,autoTypes,typesFromEdges,normZone} from "./rules.js";
+
+const $=id=>document.getElementById(id);
+const cv=$("cv"),cx=cv.getContext("2d");
+const S={img:null,iw:760,ih:1000,ftPerPx:null,lot:[],lotClosed:false,types:[],bldgs:[],nb:[],draft:[],mode:"place",
+  adu:{w:20,d:30,x:0,y:0,rot:0},scalePts:[],map:null,mapDirty:true,v:1,ox:0};
+
+function aduPoly(x,y){return rectPoly(S.adu,x,y,S.ftPerPx)}
+function rules(){const n=id=>Math.max(0,parseFloat($(id).value)||0);const h=n("house");return {front:n("rFront"),side:n("rSide"),rear:n("rRear"),cov:n("rCov"),sep:n("rSep"),tall:$("tall").checked,maxA:maxAduArea(h),house:h}}
+function ready(){return S.ftPerPx&&S.lotClosed&&S.lot.length>=3}
+
+function gridPts(){const xs=S.lot.map(p=>p.x),ys=S.lot.map(p=>p.y),x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys);
+  const stepFt=Math.max(2,Math.sqrt(area(S.lot)*S.ftPerPx*S.ftPerPx/5000)),st=stepFt/S.ftPerPx,pts=[];
+  for(let y=y0+st/2;y<y1;y+=st)for(let x=x0+st/2;x<x1;x+=st)if(inside({x,y},S.lot))pts.push({x,y});return {pts,st}}
+function globalOk(R){const g=check(S,aduPoly(S.adu.x,S.adu.y),R,false);return !g.rows.slice(-2).some(r=>!r.ok)}
+function buildMap(){
+  S.mapDirty=false;S.map=null;if(!ready())return;
+  const R=rules(),g=gridPts(),gl=globalOk(R);
+  S.map={cells:g.pts.map(p=>({x:p.x,y:p.y,ok:gl&&check(S,aduPoly(p.x,p.y),R,true).ok})),st:g.st};
+}
+// best position for the current footprint, trying the current rotation and a quarter turn
+function bestSpot(){if(!ready())return null;const R=rules();if(!globalOk(R))return null;const g=gridPts(),keep=S.adu.rot;let best=null;
+  for(const rot of [keep,(keep+90)%180]){S.adu.rot=rot;for(const p of g.pts){const poly=aduPoly(p.x,p.y);if(!check(S,poly,R,true).ok)continue;const m=margin(S,poly,R);if(!best||m>best.m+(rot===keep?0:0.5))best={m,x:p.x,y:p.y,rot}}}
+  S.adu.rot=keep;return best}
+const PRESETS=[["Studio",16,24],["One bedroom",20,30],["Two bedroom",24,36]];
+function computeFits(){const box=$("fits");box.innerHTML="";if(!ready()){return}const keep={...S.adu};
+  PRESETS.forEach(([n,w,d])=>{S.adu.w=w;S.adu.d=d;const b=bestSpot();const btn=document.createElement("button");btn.type="button";btn.className="fitbtn";
+    const t=document.createElement("span");t.textContent=n+" "+w+" × "+d;const g=document.createElement("span");g.className="tag "+(b?"ok":"bad");g.textContent=b?"Fits":"No spot";btn.append(t,g);
+    btn.addEventListener("click",()=>{$("design").value=w+"x"+d;design();goBest()});box.appendChild(btn)});
+  Object.assign(S.adu,keep)}
+function goBest(){const b=bestSpot();if(!b){$("bestMsg").textContent="No spot fits this footprint. Try a smaller one or a different rotation.";return}
+  $("bestMsg").textContent="Placed with "+f1(Math.max(0,b.m))+" ft to spare.";S.adu.x=b.x;S.adu.y=b.y;S.adu.rot=b.rot;$("rot").value=b.rot;$("rotv").textContent=b.rot+"°";S.mapDirty=true;if(S.mode!=="place")setMode("place");else update()}
+
+/* ---------- drawing ---------- */
+function layout(){
+  const w=cv.clientWidth,maxH=Math.max(420,Math.min(window.innerHeight*0.82,900));
+  S.v=Math.min(w/S.iw,maxH/S.ih);const h=S.ih*S.v;S.ox=(w-S.iw*S.v)/2;
+  const dpr=window.devicePixelRatio||1;cv.style.height=h+"px";cv.width=Math.round(w*dpr);cv.height=Math.round(h*dpr);
+  cx.setTransform(dpr,0,0,dpr,0,0);
+}
+const X=p=>S.ox+p.x*S.v,Y=p=>p.y*S.v;
+function path(p,close){cx.beginPath();p.forEach((q,i)=>i?cx.lineTo(X(q),Y(q)):cx.moveTo(X(q),Y(q)));if(close)cx.closePath()}
+function draw(){
+  const w=cv.clientWidth,h=parseFloat(cv.style.height)||0;cx.clearRect(0,0,w,h);cx.fillStyle="#fff";cx.fillRect(0,0,w,h);
+  if(S.img)cx.drawImage(S.img,S.ox,0,S.iw*S.v,S.ih*S.v);
+  if(S.mapDirty)buildMap();
+  if(S.map&&$("showMap").checked&&S.mode==="place"){const s=S.map.st*S.v;
+    for(const c of S.map.cells){cx.fillStyle=c.ok?"rgba(23,140,80,.30)":"rgba(200,45,35,.22)";cx.fillRect(X(c)-s/2,Y(c)-s/2,s+0.5,s+0.5)}}
+  // no-build
+  S.nb.forEach(z=>{path(z.pts,true);cx.fillStyle="rgba(217,138,0,.18)";cx.fill();cx.setLineDash([6,4]);cx.strokeStyle="#b36f00";cx.lineWidth=1.5;cx.stroke();cx.setLineDash([])});
+  // buildings
+  S.bldgs.forEach((b,i)=>{path(b,true);cx.fillStyle="rgba(90,110,135,.35)";cx.fill();cx.strokeStyle="#3d5068";cx.lineWidth=1.5;cx.stroke();badge(String(i+1),b[0])});
+  // lot
+  if(S.lot.length){path(S.lot,S.lotClosed);cx.strokeStyle="#1f5fa8";cx.lineWidth=2.5;cx.stroke();
+    if(S.lotClosed)for(let i=0;i<S.lot.length;i++){const a=S.lot[i],b=S.lot[(i+1)%S.lot.length];chip(L(i)+" · "+TNAME[S.types[i]],{x:(a.x+b.x)/2,y:(a.y+b.y)/2})}}
+  // draft
+  if(S.draft.length){path(S.draft,false);cx.strokeStyle="#111";cx.lineWidth=1.5;cx.setLineDash([4,3]);cx.stroke();cx.setLineDash([]);
+    S.draft.forEach((p,i)=>{cx.beginPath();cx.arc(X(p),Y(p),i?4:6,0,7);cx.fillStyle=i?"#111":"#1f5fa8";cx.fill()})}
+  S.scalePts.forEach(p=>{cx.beginPath();cx.arc(X(p),Y(p),6,0,7);cx.fillStyle="#b3261e";cx.fill()});
+  if(S.scalePts.length===2){path(S.scalePts,false);cx.strokeStyle="#b3261e";cx.lineWidth=2;cx.stroke()}
+  // distances to lot lines
+  if(ready()&&S.mode==="place"&&S.result&&$("showDim").checked)S.result.rows.forEach(o=>{if(!o.seg||!isFinite(o.seg.d))return;const a=o.seg.p,b=o.seg.q,c=o.ok?"#0e5a35":"#b3261e";
+    cx.beginPath();cx.moveTo(X(a),Y(a));cx.lineTo(X(b),Y(b));cx.strokeStyle=c;cx.lineWidth=o.ok?1.2:2.2;cx.setLineDash(o.ok?[5,4]:[]);cx.stroke();cx.setLineDash([]);
+    const t=o.m,mx=(X(a)+X(b))/2,my=(Y(a)+Y(b))/2;cx.font="600 11px 'IBM Plex Mono',monospace";const w=cx.measureText(t).width+8;cx.fillStyle="#fff";cx.fillRect(mx-w/2,my-8,w,16);cx.strokeStyle=c;cx.lineWidth=1;cx.strokeRect(mx-w/2,my-8,w,16);cx.fillStyle=c;cx.textAlign="center";cx.textBaseline="middle";cx.fillText(t,mx,my+0.5)});
+  // ADU
+  if(ready()&&S.mode==="place"){const p=aduPoly(S.adu.x,S.adu.y),r=S.result;const ok=r&&r.ok;
+    path(p,true);cx.fillStyle=ok?"rgba(23,140,80,.55)":"rgba(200,45,35,.55)";cx.fill();cx.strokeStyle=ok?"#0e5a35":"#8c1c16";cx.lineWidth=2.5;cx.stroke();
+    cx.fillStyle="#fff";cx.font="600 13px 'IBM Plex Sans',sans-serif";cx.textAlign="center";cx.textBaseline="middle";
+    cx.fillText("ADU "+S.adu.w+" × "+S.adu.d,X(S.adu),Y(S.adu)-8);cx.fillText(ok?"Fits":"Does not fit",X(S.adu),Y(S.adu)+9)}
+}
+function label(t,p,c){cx.font="500 11px 'IBM Plex Sans',sans-serif";cx.textAlign="center";cx.textBaseline="middle";cx.fillStyle=c;cx.fillText(t,X(p),Y(p))}
+function badge(t,p){cx.beginPath();cx.arc(X(p),Y(p),9,0,7);cx.fillStyle="#3d5068";cx.fill();cx.font="600 11px 'IBM Plex Sans',sans-serif";cx.fillStyle="#fff";cx.textAlign="center";cx.textBaseline="middle";cx.fillText(t,X(p),Y(p)+0.5)}
+function chip(t,p){cx.font="600 11px 'IBM Plex Sans',sans-serif";const w=cx.measureText(t).width+10;cx.fillStyle="#1f5fa8";cx.fillRect(X(p)-w/2,Y(p)-9,w,18);cx.fillStyle="#fff";cx.textAlign="center";cx.textBaseline="middle";cx.fillText(t,X(p),Y(p)+0.5)}
+
+/* ---------- results panel ---------- */
+function update(){
+  const needFits=S.mapDirty;
+  const st=$("status"),tx=$("statusText"),why=$("why"),tb=$("checks").tBodies[0];why.innerHTML="";tb.innerHTML="";
+  if(!ready()){S.result=null;st.className="status idle";tx.textContent=!S.ftPerPx?"Set the scale first (step 1).":"Trace the lot lines (step 2).";draw();$("fits").innerHTML="";return}
+  const r=check(S,aduPoly(S.adu.x,S.adu.y),rules(),false);S.result=r;
+  st.className="status "+(r.ok?"ok":"bad");tx.textContent=r.ok?"Fits here":"Does not fit here";
+  r.why.forEach(w=>{const li=document.createElement("li");li.textContent=w;why.appendChild(li)});
+  r.rows.forEach(o=>{const tr=document.createElement("tr");
+    [[o.name,""],[o.m,"num"],[o.r,"num"]].forEach(([t,c])=>{const td=document.createElement("td");td.textContent=t;td.className=c;tr.appendChild(td)});
+    const td=document.createElement("td");const s=document.createElement("span");s.className="tag "+(o.ok?"ok":"bad");s.textContent=o.ok?"OK":"No";td.appendChild(s);tr.appendChild(td);tb.appendChild(tr)});
+  draw();
+  if(needFits||!$("fits").children.length)computeFits();
+}
+const NEED={row:"Right of Way permit, for the new driveway or utility extension.",
+  seis:"Geotechnical report. Call 907-343-8301.",
+  septic:"On-site well and septic review. The septic system may need an upgrade for the added bedrooms. On-Site Section: 907-343-7904.",
+  flood:"Flood zone review. In a mapped floodplain you also need a Flood Hazard Permit and Elevation Certificate. Call 907-343-8023.",
+  slope:"Steep slope information for permitting. Ask the zoning plan review team."};
+function flags(){const ul=$("need");ul.innerHTML="";const on=[...document.querySelectorAll(".flag:checked")];
+  if(!on.length){const li=document.createElement("li");li.textContent="None checked.";li.style.listStyle="none";li.style.marginLeft="-18px";li.style.color="var(--muted)";ul.appendChild(li)}
+  on.forEach(c=>{const li=document.createElement("li");li.textContent=NEED[c.dataset.k];ul.appendChild(li)});return on.map(c=>NEED[c.dataset.k])}
+
+/* ---------- modes ---------- */
+const GUIDE={
+  scale:"<b>Step 1.</b> Click the two ends of a line whose length is printed on the survey, such as a lot line. Then type its length.",
+  lot:"<b>Step 2.</b> Click each corner of the lot in order. Click the first corner again to close it. Then click a line's label to change it between Front, Side, Rear and Alley.",
+  bldg:"<b>Step 3.</b> Click the corners of each existing building. Click the first corner again to close each one.",
+  nobuild:"<b>Step 4.</b> Pick a type, then click the corners of any area you cannot build on, such as an easement or septic field.",
+  place:"<b>Step 5.</b> Drag the ADU around the lot, or click a spot to move it there. Arrow keys nudge it one foot."};
+function setMode(m){S.mode=m;S.draft=[];if(m!=="scale")S.scalePts=[];
+  document.querySelectorAll("[data-mode]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.mode===m));
+  $("guide").innerHTML=GUIDE[m];$("scaleBox").classList.toggle("on",m==="scale"&&S.scalePts.length===2);
+  $("shapeBox").classList.toggle("on",m==="lot"||m==="bldg"||m==="nobuild");$("nbLabel").style.display=m==="nobuild"?"":"none";
+  cv.style.cursor=m==="place"?"grab":"crosshair";update()}
+function finish(){if(S.draft.length<3)return;const p=S.draft;S.draft=[];
+  if(S.mode==="lot"){S.lot=p;S.lotClosed=true;S.types=autoTypes(S.lot);const c=cen(p);S.adu.x=c.x;S.adu.y=c.y}
+  else if(S.mode==="bldg"){S.bldgs.push(p);S.bldgArea=null}else if(S.mode==="nobuild")S.nb.push({pts:p,label:$("nbLabel").value});
+  S.mapDirty=true;update()}
+function toImg(e){const r=cv.getBoundingClientRect();return {x:(e.clientX-r.left-S.ox)/S.v,y:(e.clientY-r.top)/S.v}}
+let drag=null;
+cv.addEventListener("pointerdown",e=>{const p=toImg(e),tol=12/S.v;cv.focus({preventScroll:true});
+  if(S.mode==="scale"){if(S.scalePts.length>=2)S.scalePts=[];S.scalePts.push(p);$("scaleBox").classList.toggle("on",S.scalePts.length===2);if(S.scalePts.length===2)$("scaleFt").focus();draw();return}
+  if(S.mode==="place"){if(!ready())return;const poly=aduPoly(S.adu.x,S.adu.y);
+    if(!inside(p,poly)){S.adu.x=p.x;S.adu.y=p.y}drag={dx:S.adu.x-p.x,dy:S.adu.y-p.y};cv.setPointerCapture(e.pointerId);cv.style.cursor="grabbing";update();return}
+  if(S.mode==="lot"&&S.lotClosed&&!S.draft.length){for(let i=0;i<S.lot.length;i++){const a=S.lot[i],b=S.lot[(i+1)%S.lot.length];
+      if(ptSeg(p,a,b)<tol){S.types[i]=TYPES[(TYPES.indexOf(S.types[i])+1)%4];S.mapDirty=true;update();return}}return}
+  if(S.draft.length>=3&&Math.hypot(p.x-S.draft[0].x,p.y-S.draft[0].y)<tol){finish();return}
+  S.draft.push(p);draw()});
+cv.addEventListener("pointermove",e=>{if(!drag)return;const p=toImg(e);S.adu.x=p.x+drag.dx;S.adu.y=p.y+drag.dy;update()});
+const endDrag=()=>{if(drag){drag=null;cv.style.cursor="grab"}};
+cv.addEventListener("pointerup",endDrag);cv.addEventListener("pointercancel",endDrag);
+cv.addEventListener("keydown",e=>{if(S.mode!=="place"||!ready())return;const k={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]}[e.key];if(!k)return;e.preventDefault();
+  S.adu.x+=k[0]/S.ftPerPx;S.adu.y+=k[1]/S.ftPerPx;update()});
+document.querySelectorAll("[data-mode]").forEach(b=>b.addEventListener("click",()=>setMode(b.dataset.mode)));
+$("finish").addEventListener("click",finish);
+$("undo").addEventListener("click",()=>{if(S.draft.length)S.draft.pop();else if(S.mode==="bldg"){S.bldgs.pop();S.bldgArea=null}else if(S.mode==="nobuild")S.nb.pop();S.mapDirty=true;update()});
+$("clear").addEventListener("click",()=>{S.draft=[];if(S.mode==="lot"){S.lot=[];S.lotClosed=false;S.types=[]}else if(S.mode==="bldg"){S.bldgs=[];S.bldgArea=null}else S.nb=[];S.mapDirty=true;update()});
+$("scaleApply").addEventListener("click",()=>{const ft=parseFloat($("scaleFt").value);if(!(ft>0)||S.scalePts.length<2)return;
+  const d=Math.hypot(S.scalePts[0].x-S.scalePts[1].x,S.scalePts[0].y-S.scalePts[1].y);if(d<2)return;S.ftPerPx=ft/d;S.mapDirty=true;setMode(S.lotClosed?"place":"lot")});
+
+/* ---------- controls ---------- */
+function design(){const v=$("design").value;if(v!=="custom"){const [w,d]=v.split("x").map(Number);$("aw").value=w;$("ad").value=d}
+  S.adu.w=Math.max(8,Math.min(60,parseFloat($("aw").value)||20));S.adu.d=Math.max(8,Math.min(60,parseFloat($("ad").value)||30));S.mapDirty=true;update()}
+$("design").addEventListener("change",design);
+["aw","ad"].forEach(id=>$(id).addEventListener("input",()=>{$("design").value="custom";design()}));
+$("rot").addEventListener("input",()=>{$("bestMsg").textContent="";S.adu.rot=+$("rot").value;$("rotv").textContent=S.adu.rot+"°";S.mapDirty=true;update()});
+Object.keys(DIST).concat(["Custom"]).forEach(k=>{const o=document.createElement("option");o.value=k;o.textContent=k==="Custom"?"Custom values":k+"  (front "+DIST[k][0]+", side "+DIST[k][1]+", rear "+DIST[k][2]+" ft, "+DIST[k][3]+"% coverage)";$("dist").appendChild(o)});
+$("dist").addEventListener("change",()=>{const d=DIST[$("dist").value];if(d){$("rFront").value=d[0];$("rSide").value=d[1];$("rRear").value=d[2];$("rCov").value=d[3]}S.mapDirty=true;update()});
+["rFront","rSide","rRear","rCov"].forEach(id=>$(id).addEventListener("input",()=>{$("dist").value="Custom"}));
+["rFront","rSide","rRear","rCov","rSep","tall","house"].forEach(id=>$(id).addEventListener("input",()=>{S.mapDirty=true;update()}));
+$("best").addEventListener("click",goBest);$("showDim").addEventListener("change",draw);
+$("showMap").addEventListener("change",draw);
+document.querySelectorAll(".flag").forEach(c=>c.addEventListener("change",flags));
+$("copy").addEventListener("click",async()=>{const r=S.result;if(!r)return;
+  const t=["ADU Fit Check (screening only, not a zoning determination)",...(S.info?["Parcel "+S.info.pid+", "+S.info.addr+". Lot lines and buildings from Municipality of Anchorage GIS, not a survey."]:[]),"ADU footprint: "+S.adu.w+" x "+S.adu.d+" ft, rotated "+S.adu.rot+" degrees","Result: "+(r.ok?"Fits here":"Does not fit here"),
+    ...r.why.map(w=>"- "+w),"","Checks:",...r.rows.map(o=>(o.ok?"OK  ":"NO  ")+o.name+": "+o.m+" (required "+o.r+")"),"","Other reviews:",...(flags().length?flags().map(x=>"- "+x):["- none checked"])].join("\n");
+  try{await navigator.clipboard.writeText(t);$("copied").textContent="Copied."}catch(err){$("copied").textContent="Copy was blocked by the browser."}
+  setTimeout(()=>$("copied").textContent="",2500)});
+
+/* ---------- loading a survey ---------- */
+function setImage(c){S.img=c;S.iw=c.width;S.ih=c.height;S.ftPerPx=null;S.lot=[];S.lotClosed=false;S.types=[];S.bldgs=[];S.nb=[];S.draft=[];S.scalePts=[];S.bldgArea=null;S.info=null;S.site=null;$("frontPick").innerHTML="";$("frontPick").classList.remove("on");S.mapDirty=true;layout()}
+function toCanvas(src,w,h){const m=1600/Math.max(w,h),k=Math.min(1,m),c=document.createElement("canvas");c.width=Math.round(w*k);c.height=Math.round(h*k);c.getContext("2d").drawImage(src,0,0,c.width,c.height);return c}
+function loadScript(u){return new Promise((res,rej)=>{const s=document.createElement("script");s.src=u;s.onload=res;s.onerror=rej;document.head.appendChild(s)})}
+$("file").addEventListener("change",async e=>{const f=e.target.files[0];if(!f)return;e.target.value="";
+  try{
+    if(f.type==="application/pdf"||/\.pdf$/i.test(f.name)){
+      const base="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/";
+      if(!window.pdfjsLib){await loadScript(base+"pdf.min.js");window.pdfjsLib.GlobalWorkerOptions.workerSrc=base+"pdf.worker.min.js"}
+      const pdf=await window.pdfjsLib.getDocument({data:await f.arrayBuffer()}).promise,pg=await pdf.getPage(1),v0=pg.getViewport({scale:1});
+      const vp=pg.getViewport({scale:1600/Math.max(v0.width,v0.height)}),c=document.createElement("canvas");c.width=Math.round(vp.width);c.height=Math.round(vp.height);
+      const g=c.getContext("2d");g.fillStyle="#fff";g.fillRect(0,0,c.width,c.height);await pg.render({canvasContext:g,viewport:vp}).promise;setImage(c);
+    }else{
+      const url=URL.createObjectURL(f),im=new Image();await new Promise((res,rej)=>{im.onload=res;im.onerror=rej;im.src=url});setImage(toCanvas(im,im.naturalWidth,im.naturalHeight));URL.revokeObjectURL(url);
+    }
+    setMode("scale");
+  }catch(err){$("guide").innerHTML="<b>That file could not be read here.</b> Try a photo or screenshot of the survey (PNG or JPG).";}
+});
+
+/* ---------- AI reads the survey ---------- */
+let sampler=null;
+if(window.claude&&window.claude.use)window.claude.use("sample").then(async fn=>{if(!fn)return;try{const l=await fn.limits();if(l&&l.images){sampler=fn;$("ai").hidden=false}}catch(e){}}).catch(()=>{});
+const AI_PROMPT=`You are reading a residential as-built survey or plot plan for one lot. Find the lot boundary, existing buildings, areas that cannot be built on, and one printed dimension to set the scale.
+Use a coordinate system where x runs 0 to 1000 from the left edge of the image to the right edge, and y runs 0 to 1000 from the top edge to the bottom edge.
+Return only JSON, no prose, in this shape:
+{"lot":[[x,y],...],"front_edge":0,"alley_edges":[],"buildings":[{"label":"House","pts":[[x,y],...]}],"no_build":[{"label":"Utility easement","pts":[[x,y],...]}],"scale":{"p1":[x,y],"p2":[x,y],"feet":60.0},"zoning":"","notes":""}
+Rules: "lot" lists the lot corners in order around the boundary. Edge i runs from corner i to corner i+1. "front_edge" is the index of the edge along the street. "alley_edges" lists edges along an alley, if any. "buildings" are footprints of existing structures such as house, garage and sheds. "no_build" are easements, septic fields, wells and similar, with a short plain label. "scale" gives two points that are the ends of a line whose length in feet is printed on the drawing, preferably a lot line, and that length. "zoning" is the district if printed, otherwise empty. Put anything you were unsure of in "notes". Be as precise as you can with coordinates.`;
+function applyAI(o){if(typeof o==="string"){const a=o.indexOf("{"),b=o.lastIndexOf("}");o=JSON.parse(o.slice(a,b+1))}
+  const P=q=>({x:Math.max(0,Math.min(1000,+q[0]))*S.iw/1000,y:Math.max(0,Math.min(1000,+q[1]))*S.ih/1000}),poly=a=>Array.isArray(a)&&a.length>=3&&a.every(q=>Array.isArray(q)&&isFinite(q[0])&&isFinite(q[1]))?a.map(P):null;
+  const lot=poly(o.lot);if(!lot)throw new Error("no lot");
+  S.lot=lot;S.lotClosed=true;S.draft=[];S.types=autoTypes(S.lot,o.front_edge);(o.alley_edges||[]).forEach(i=>{if(Number.isInteger(i)&&i>=0&&i<lot.length&&S.types[i]!=="front")S.types[i]="alley"});
+  S.bldgs=(o.buildings||[]).map(b=>poly(b.pts)).filter(Boolean);
+  S.nb=(o.no_build||[]).map(z=>({pts:poly(z.pts),label:String(z.label||"No-build area").slice(0,40)})).filter(z=>z.pts);
+  const sc=o.scale;let scaled=false;if(sc&&Array.isArray(sc.p1)&&Array.isArray(sc.p2)&&sc.feet>0){const a=P(sc.p1),b=P(sc.p2),d=Math.hypot(a.x-b.x,a.y-b.y);if(d>5){S.ftPerPx=sc.feet/d;scaled=true}}
+  if(typeof o.zoning==="string"&&DIST[o.zoning.trim().toUpperCase()]){$("dist").value=o.zoning.trim().toUpperCase();$("dist").dispatchEvent(new Event("change"))}
+  const c=cen(lot);S.adu.x=c.x;S.adu.y=c.y;S.mapDirty=true;
+  if(!scaled){setMode("scale");$("guide").innerHTML="<b>AI traced the lot but could not read a dimension.</b> Click the two ends of a line with a printed length, then type it."}
+  else{setMode("place");const b=bestSpot();if(b){S.adu.x=b.x;S.adu.y=b.y;S.adu.rot=b.rot;$("rot").value=b.rot;$("rotv").textContent=b.rot+"°";update()}
+    $("guide").innerHTML="<b>AI traced this survey. Check it before you rely on it.</b> Compare the blue lot lines, the numbered buildings and the orange areas with the drawing. Use steps 1 to 4 to fix anything that is off."+(o.notes?" AI note: ":"");
+    if(o.notes)$("guide").appendChild(document.createTextNode(String(o.notes).slice(0,300)))}}
+$("ai").addEventListener("click",async()=>{if(!sampler||!S.img)return;const btn=$("ai");btn.disabled=true;btn.textContent="Reading the survey…";
+  try{const blob=await new Promise(r=>S.img.toBlob(r,"image/jpeg",0.92));const out=await sampler.json(AI_PROMPT,{images:[blob],modelTier:"complex",cache:false});applyAI(out)}
+  catch(e){$("guide").innerHTML=e&&e.code==="rate_limited"?"<b>AI is busy right now.</b> Wait a minute and try again, or trace the survey by hand with steps 1 to 4.":"<b>AI could not read this survey.</b> Trace it by hand with steps 1 to 4."}
+  btn.disabled=false;btn.textContent="Read survey with AI"});
+
+/* ---------- address lookup from Municipality of Anchorage GIS (public ArcGIS REST, see data.js) ---------- */
+// data.js needs Turf.js from a CDN. It is loaded on first use so the rest of the page works without it.
+let dataMod=null;const data=()=>dataMod||(dataMod=import("./data.js"));
+const amsg=t=>{$("addrMsg").textContent=t};
+const btnEl=(text,fn,cls)=>{const b=document.createElement("button");b.type="button";b.textContent=text;if(cls)b.className=cls;b.addEventListener("click",fn);return b};
+// Label the lot lines from the streets and alleys around the lot. `primary` is the street the rear line is measured against.
+function applyFrontage(primary){const s=S.site;if(!s)return;const r=typesFromEdges(S.lot,s.edges,primary);S.types=r.types;s.frontage=r;
+  const box=$("frontPick");box.innerHTML="";
+  if(r.streets.length>1){const sp=document.createElement("span");sp.textContent="Corner lot. Which street does the house face?";box.appendChild(sp);
+    r.streets.forEach(n=>{const b=btnEl(n,()=>{applyFrontage(n);S.mapDirty=true;update()});b.setAttribute("aria-pressed",n===r.primary);box.appendChild(b)})}
+  box.classList.toggle("on",r.streets.length>1)}
+function frontageNote(){const s=S.site,r=s.frontage,ix=k=>s.edges.map((e,i)=>e.kind===k?L(i):null).filter(Boolean),ls=a=>a.length>1?"Lines "+a.join(", "):"Line "+a[0];
+  const out=[];
+  if(!r.streets.length)out.push("No street was found next to this lot on the map, so line "+L(S.types.indexOf("front"))+" is only a placeholder for the front. Open step 2 and click the line labels to set them.");
+  else if(r.streets.length===1)out.push(ls(ix("street"))+" along "+r.streets[0]+(ix("street").length>1?" are":" is")+" the front.");
+  else out.push("This is a corner lot on "+r.streets.join(" and ")+". Every line on a street is a front lot line (AMC 21.15.040), so each gets the front setback here. Pick the street the house faces to set the rear line.");
+  if(ix("alley").length)out.push(ls(ix("alley"))+" along an alley: no setback there.");
+  if(ix("open").length)out.push(ls(ix("open"))+" faces land with no parcel and no mapped street or alley. Check how it should be labelled.");
+  return out.join(" ")}
+function sceneFromGIS(info,site){
+  // site coordinates are feet, y down (north up). Lot lines are tidied so each straight line is one edge; buildings are drawn exactly as mapped.
+  const lot=clean(site.lot);if(lot.length<3)throw new Error("lot");
+  const xs=lot.map(p=>p.x),ys=lot.map(p=>p.y),x0=Math.min(...xs),y0=Math.min(...ys),w=Math.max(...xs)-x0,h=Math.max(...ys)-y0,k=Math.min(8,640/w,760/h),mx=150,my=130;
+  const px=p=>({x:(p.x-x0)*k+mx,y:(p.y-y0)*k+my});
+  const lotA=area(lot);
+  const c=document.createElement("canvas");c.width=Math.round(w*k+2*mx);c.height=Math.round(h*k+my+110);const g=c.getContext("2d");
+  g.fillStyle="#fbfbf8";g.fillRect(0,0,c.width,c.height);g.strokeStyle="#222";g.lineWidth=2;g.strokeRect(12,12,c.width-24,c.height-24);
+  g.fillStyle="#222";g.textAlign="center";g.font="700 20px Archivo,Arial,sans-serif";g.fillText(info.addr||"Parcel "+info.pid,c.width/2,48);
+  g.font="12px 'IBM Plex Mono',monospace";g.fillText("Parcel "+info.pid+(info.zone?"   Zoning "+info.zone:"")+"   Lot "+Math.round(lotA).toLocaleString()+" sq ft as mapped",c.width/2,70);
+  g.fillText("Lot lines and buildings from Municipality of Anchorage GIS.",c.width/2,88);g.fillText("Not a survey. Screening only.",c.width/2,104);
+  g.strokeStyle="#222";g.lineWidth=1;g.beginPath();g.moveTo(c.width-60,my+70);g.lineTo(c.width-60,my+10);g.lineTo(c.width-70,my+30);g.moveTo(c.width-60,my+10);g.lineTo(c.width-50,my+30);g.stroke();g.font="700 14px Archivo,Arial,sans-serif";g.fillText("N",c.width-60,my);
+  const bar=20*k;g.lineWidth=3;g.beginPath();g.moveTo(40,c.height-40);g.lineTo(40+bar,c.height-40);g.stroke();g.font="11px 'IBM Plex Mono',monospace";g.textAlign="left";g.fillText("20 ft",40,c.height-48);
+  const edges=classifyEdges(lot,site.neighbors,site.lines);
+  setImage(c);S.ftPerPx=1/k;S.lot=lot.map(px);S.lotClosed=true;S.info=info;
+  S.bldgs=site.bldgs.map(b=>openRing(b.pts).map(px));
+  S.bldgArea=site.bldgArea;   // clipped to the lot, holes taken out, in sq ft
+  S.site={edges,lotA};
+  const addrStreet=(info.addr||"").replace(/^\d+\S*\s+/,"").toUpperCase();
+  const guess=[...new Set(edges.filter(e=>e.kind==="street").map(e=>e.label))].find(n=>n.toUpperCase()===addrStreet);
+  applyFrontage(guess);
+  const z=normZone(info.zone);if(DIST[z]){$("dist").value=z;const d=DIST[z];$("rFront").value=d[0];$("rSide").value=d[1];$("rRear").value=d[2];$("rCov").value=d[3]}
+  const ce=cen(S.lot);S.adu.x=ce.x;S.adu.y=ce.y;S.mapDirty=true;setMode("place");
+  const b=bestSpot();if(b){S.adu.x=b.x;S.adu.y=b.y;S.adu.rot=b.rot;$("rot").value=b.rot;$("rotv").textContent=b.rot+"°";update()}
+  const gd=$("guide");gd.innerHTML="<b>Loaded from Muni GIS. Check the lot line labels.</b> ";
+  gd.appendChild(document.createTextNode(frontageNote()+" To change a label, open step 2 and click it. Building outlines are the Municipality's mapped footprints, cut off at the lot line; they may not show recent construction."+(DIST[z]?"":" Zoning district "+(info.zone||"(blank)")+" is not in the list, so set the setbacks by hand.")));
+}
+async function loadParcel(p){const btn=$("addrGo");btn.disabled=true;$("addrPick").innerHTML="";amsg("Found "+p.addr+". Getting the lot lines, buildings and streets…");
+  try{const d=await data(),site=await d.loadSite(p);sceneFromGIS({pid:p.pid,addr:p.addr,zone:p.zone,lotSize:p.lotSize},site);
+    const n=S.bldgs.length,lotA=S.site.lotA;
+    amsg(p.addr+": "+n+" building"+(n===1?"":"s")+" on the lot, "+Math.round(site.bldgArea).toLocaleString()+" sq ft of footprint, "+f1(site.bldgArea/lotA*100)+"% of the "+Math.round(lotA).toLocaleString()+" sq ft mapped lot."
+      +(p.lotSize>0&&Math.abs(p.lotSize-lotA)/lotA>0.01?" The assessor lists the lot as "+Number(p.lotSize).toLocaleString()+" sq ft; this page uses the mapped outline.":"")
+      +(p.parts>1?" This parcel has "+p.parts+" separate pieces; only the largest is drawn.":""));
+  }catch(e){console.error(e);amsg("The parcel was found but the map data did not load. Try again in a minute, or upload a survey.")}
+  btn.disabled=false}
+async function lookup(){const q=$("addr").value.trim();if(!q)return;const btn=$("addrGo"),pick=$("addrPick");btn.disabled=true;pick.innerHTML="";amsg("Looking up the parcel…");
+  let list;
+  try{const d=await data();list=await d.findParcels(q)}
+  catch(e){console.error(e);amsg("Address lookup could not reach the Municipality's map service. Try again in a minute, or upload a survey.");btn.disabled=false;return}
+  btn.disabled=false;
+  if(!list.length){amsg("No parcel found at that address. Use the short street type, like 123 W 10TH AVE.");return}
+  const Q=q.toUpperCase().replace(/\s+/g," "),exact=list.filter(p=>p.addr===Q);
+  if(list.length===1||exact.length===1){loadParcel(exact[0]||list[0]);return}
+  amsg(list.length+(list.more?" or more":"")+" parcels match. Pick one"+(list.more?", or type more of the address":"")+".");
+  list.forEach(p=>pick.appendChild(btnEl(p.addr+"  (parcel "+p.pid+")",()=>loadParcel(p))));
+}
+$("addrGo").addEventListener("click",lookup);$("addr").addEventListener("keydown",e=>{if(e.key==="Enter")lookup()});
+
+/* ---------- sample survey (made up) ---------- */
+function sample(){
+  const c=document.createElement("canvas");c.width=760;c.height=1000;const g=c.getContext("2d"),k=6; // 6 px per foot
+  g.fillStyle="#fbfbf8";g.fillRect(0,0,760,1000);g.strokeStyle="#222";g.lineWidth=2;g.strokeRect(14,14,732,972);
+  const T=(t,x,y,f,a,rot)=>{g.save();g.translate(x,y);if(rot)g.rotate(rot);g.font=f||"12px 'IBM Plex Mono',monospace";g.fillStyle="#222";g.textAlign=a||"center";g.fillText(t,0,0);g.restore()};
+  T("AS-BUILT SURVEY",380,50,"700 20px Archivo,Arial,sans-serif");T("LOT 7, BLOCK 3, EXAMPLE SUBDIVISION",380,72);T("SAMPLE ONLY. NOT A REAL SURVEY.",380,92,"600 12px 'IBM Plex Mono',monospace");
+  const x0=200,y0=130,x1=560,y1=880;
+  g.lineWidth=3;g.strokeRect(x0,y0,360,750);
+  T("N 89°58' E   60.00'",380,y0-8);T("60.00'",380,y1+18);T("125.00'",x0-10,505,null,"center",-Math.PI/2);T("125.00'",x1+16,505,null,"center",-Math.PI/2);
+  g.setLineDash([8,5]);g.lineWidth=1;g.beginPath();g.moveTo(x0,y0+10*k);g.lineTo(x1,y0+10*k);g.stroke();g.setLineDash([]);T("10' UTILITY EASEMENT",380,y0+34,"11px 'IBM Plex Mono',monospace");
+  const hatch=(x,y,w,h)=>{g.save();g.beginPath();g.rect(x,y,w,h);g.clip();g.strokeStyle="#999";g.lineWidth=1;for(let i=-h;i<w;i+=9){g.beginPath();g.moveTo(x+i,y+h);g.lineTo(x+i+h,y);g.stroke()}g.restore();g.lineWidth=2;g.strokeStyle="#222";g.strokeRect(x,y,w,h)};
+  hatch(260,592,240,168);g.fillStyle="#fbfbf8";g.fillRect(310,660,140,34);T("EXISTING HOUSE",380,675);T("40.0' x 28.0'",380,689,"11px 'IBM Plex Mono',monospace");
+  hatch(230,400,120,132);g.fillStyle="#fbfbf8";g.fillRect(250,452,80,30);T("GARAGE",290,466);T("20.0' x 22.0'",290,479,"10px 'IBM Plex Mono',monospace");
+  g.setLineDash([4,4]);g.lineWidth=1;g.strokeRect(232,532,60,348);g.setLineDash([]);T("DRIVEWAY",262,820,"10px 'IBM Plex Mono',monospace","center",-Math.PI/2);
+  g.lineWidth=1;g.beginPath();g.moveTo(40,900);g.lineTo(720,900);g.moveTo(40,950);g.lineTo(720,950);g.stroke();T("W. EXAMPLE AVENUE  (60' R.O.W.)",380,930);
+  g.beginPath();g.moveTo(660,200);g.lineTo(660,140);g.lineTo(650,160);g.moveTo(660,140);g.lineTo(670,160);g.stroke();T("N",660,132,"700 14px Archivo,Arial,sans-serif");
+  T("SCALE: 1 in = 20 ft",640,975,"11px 'IBM Plex Mono',monospace");T("ZONING: R-1 (example)",120,975,"11px 'IBM Plex Mono',monospace");
+  setImage(c);S.ftPerPx=1/k;
+  S.lot=[{x:x0,y:y0},{x:x1,y:y0},{x:x1,y:y1},{x:x0,y:y1}];S.lotClosed=true;S.types=autoTypes(S.lot);
+  S.bldgs=[[{x:260,y:592},{x:500,y:592},{x:500,y:760},{x:260,y:760}],[{x:230,y:400},{x:350,y:400},{x:350,y:532},{x:230,y:532}]];
+  S.nb=[{label:"Utility easement",pts:[{x:x0,y:y0},{x:x1,y:y0},{x:x1,y:y0+60},{x:x0,y:y0+60}]}];
+  S.adu.x=455;S.adu.y=310;setMode("place");
+}
+$("sample").addEventListener("click",sample);
+window.addEventListener("resize",()=>{layout();draw()});
+flags();sample();
+if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>{if(S.ftPerPx===1/6&&S.bldgs.length===2&&S.img&&S.img.width===760){const a={...S.adu},m=S.mode;sample();Object.assign(S.adu,a);setMode(m)}});

@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ADU Fit Check</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Layout idea: a surveyor's drafting table. The survey sheet on the left, a plan-check slip on the right. */
+:root{
+  --bg:#eef1f4; --panel:#ffffff; --ink:#16263a; --muted:#5b6b7d; --line:#cfd7e0;
+  --accent:#1f5fa8; --accent-ink:#ffffff;
+  --ok:#17794a; --ok-bg:#e3f4ea; --bad:#b3261e; --bad-bg:#fbe7e5; --warn:#8a5a00; --warn-bg:#fdf1d7;
+  --display:"Archivo","Helvetica Neue",Arial,sans-serif;
+  --body:"IBM Plex Sans","Segoe UI",Arial,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#101820; --panel:#18232f; --ink:#e6edf4; --muted:#9aaaba; --line:#2c3b4b;
+    --accent:#6fb0f2; --accent-ink:#0c1620;
+    --ok:#5fd39a; --ok-bg:#143526; --bad:#ff8f86; --bad-bg:#40191a; --warn:#f0c060; --warn-bg:#3a2d10;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#101820; --panel:#18232f; --ink:#e6edf4; --muted:#9aaaba; --line:#2c3b4b;
+  --accent:#6fb0f2; --accent-ink:#0c1620;
+  --ok:#5fd39a; --ok-bg:#143526; --bad:#ff8f86; --bad-bg:#40191a; --warn:#f0c060; --warn-bg:#3a2d10;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.45}
+.wrap{max-width:1280px;margin:0 auto;padding:20px 16px 40px;display:flex;flex-direction:column;gap:14px}
+header{display:flex;flex-wrap:wrap;gap:8px 20px;align-items:baseline;justify-content:space-between}
+h1{font-family:var(--display);font-weight:700;font-size:26px;margin:0;letter-spacing:-.01em}
+header p{margin:0;color:var(--muted);max-width:62ch}
+.notice{background:var(--warn-bg);color:var(--warn);border-radius:6px;padding:8px 12px;font-size:13.5px}
+.main{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(300px,1fr);gap:16px;align-items:start}
+@media (max-width:900px){.main{grid-template-columns:1fr}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px}
+.stage{padding:12px;display:flex;flex-direction:column;gap:10px}
+.bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.bar .sep{width:1px;height:24px;background:var(--line);margin:0 4px}
+button,.filebtn{font:inherit;font-weight:500;font-size:13.5px;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:6px;padding:6px 10px;cursor:pointer}
+button:hover,.filebtn:hover{border-color:var(--accent)}
+button:focus-visible,.filebtn:focus-within,input:focus-visible,select:focus-visible,canvas:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+button .n{font-family:var(--mono);opacity:.75;margin-right:5px}
+.filebtn input{position:absolute;opacity:0;width:1px;height:1px}
+.guide{font-size:13.5px;color:var(--muted);min-height:20px}
+.guide b{color:var(--ink);font-weight:600}
+.inline{display:none;gap:6px;align-items:center;flex-wrap:wrap;font-size:13.5px}
+.inline.on{display:flex}
+canvas{display:block;width:100%;border:1px solid var(--line);border-radius:4px;background:#fff;touch-action:none;cursor:crosshair}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12.5px;color:var(--muted)}
+.sw{display:inline-block;width:12px;height:12px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.side{display:flex;flex-direction:column;gap:14px}
+.card{padding:14px}
+h2{font-family:var(--display);font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0 0 10px}
+.status{display:flex;align-items:center;gap:10px;font-family:var(--display);font-weight:700;font-size:21px;padding:10px 12px;border-radius:6px;margin-bottom:10px}
+.status.ok{background:var(--ok-bg);color:var(--ok)} .status.bad{background:var(--bad-bg);color:var(--bad)} .status.idle{background:var(--bg);color:var(--muted);font-size:16px}
+.status .dot{width:14px;height:14px;border-radius:50%;background:currentColor;flex:none}
+ul.why{margin:0 0 10px;padding-left:18px} ul.why li{margin:3px 0}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th,td{text-align:left;padding:5px 6px;border-top:1px solid var(--line);vertical-align:top}
+th{font-weight:500;color:var(--muted);border-top:0;font-size:12.5px}
+td.num,th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.tag{display:inline-block;font-size:12px;font-weight:600;border-radius:10px;padding:1px 8px}
+.fitbtn{display:flex;gap:8px;align-items:center}
+.tag.ok{background:var(--ok-bg);color:var(--ok)} .tag.bad{background:var(--bad-bg);color:var(--bad)}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px 10px}
+label{display:flex;flex-direction:column;gap:3px;font-size:12.5px;color:var(--muted)}
+label.check{flex-direction:row;align-items:flex-start;gap:8px;font-size:14px;color:var(--ink);margin:5px 0}
+label.check input{margin-top:3px}
+input[type=number],input[type=text],select{font:inherit;font-size:14px;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:5px 7px;width:100%}
+input[type=range]{width:100%}
+.small{font-size:12.5px;color:var(--muted);margin:8px 0 0}
+.need{margin:8px 0 0;padding-left:18px;font-size:14px} .need li{margin:4px 0}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+#copied{font-size:12.5px;color:var(--ok)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>ADU Fit Check</h1>
+    <p>Put a survey on the table, drop an ADU on it, and see where it fits. Green fits. Red does not, and the slip on the right says why.</p>
+  </header>
+  <div class="notice"><b>Prototype for discussion.</b> The sample survey is made up and the ADU footprints are examples. Setbacks and lot coverage come from the Anchorage zoning code for the district you pick. Results are screening only. Zoning staff make the determination.</div>
+
+  <div class="main">
+    <section class="panel stage" aria-label="Survey">
+      <div class="inline on" id="addrBox">
+        <input type="text" id="addr" placeholder="Anchorage street address, like 123 W 10TH AVE" style="flex:1;min-width:220px" aria-label="Street address">
+        <button id="addrGo" type="button" class="primary">Look up address</button>
+        <span id="addrMsg" class="small" style="margin:0;flex-basis:100%" aria-live="polite"></span>
+        <div id="addrPick" class="row" style="flex-basis:100%"></div>
+      </div>
+      <div class="bar">
+        <label class="filebtn">Upload survey<input type="file" id="file" accept="image/*,application/pdf"></label>
+        <button id="sample" type="button">Use sample</button>
+        <button id="ai" type="button" hidden>Read survey with AI</button>
+        <span class="sep"></span>
+        <button type="button" data-mode="scale"><span class="n">1</span>Scale</button>
+        <button type="button" data-mode="lot"><span class="n">2</span>Lot lines</button>
+        <button type="button" data-mode="bldg"><span class="n">3</span>Buildings</button>
+        <button type="button" data-mode="nobuild"><span class="n">4</span>No-build areas</button>
+        <button type="button" data-mode="place"><span class="n">5</span>Place ADU</button>
+      </div>
+      <div class="guide" id="guide"></div>
+      <div class="inline" id="frontPick"></div>
+      <div class="inline" id="scaleBox">
+        <span>Distance between the two points</span>
+        <input type="number" id="scaleFt" min="1" step="0.01" style="width:100px" aria-label="Distance in feet"> <span>ft</span>
+        <button class="primary" id="scaleApply" type="button">Set scale</button>
+      </div>
+      <div class="inline" id="shapeBox">
+        <select id="nbLabel" style="width:auto" aria-label="Type of no-build area">
+          <option>Utility easement</option><option>Septic field or well</option><option>Steep slope</option><option>Drainage easement</option><option>Other no-build area</option>
+        </select>
+        <button id="finish" type="button" class="primary">Finish shape</button>
+        <button id="undo" type="button">Undo</button>
+        <button id="clear" type="button">Clear all of these</button>
+      </div>
+      <canvas id="cv" tabindex="0" aria-label="Survey drawing. In Place ADU mode, drag the ADU or use arrow keys to move it one foot."></canvas>
+      <div class="legend">
+        <span><span class="sw" style="background:rgba(23,140,80,.45)"></span>ADU fits with its center here</span>
+        <span><span class="sw" style="background:rgba(200,45,35,.4)"></span>Does not fit</span>
+        <span><span class="sw" style="background:#7d8ea3"></span>Existing building (numbered)</span>
+        <span><span class="sw" style="background:repeating-linear-gradient(45deg,#d98a00 0 3px,#fff 3px 6px)"></span>No-build area</span>
+      </div>
+    </section>
+
+    <aside class="side">
+      <section class="panel card" aria-live="polite">
+        <h2>Plan check</h2>
+        <div id="status" class="status idle"><span class="dot"></span><span id="statusText"></span></div>
+        <ul class="why" id="why"></ul>
+        <table id="checks"><thead><tr><th>Check</th><th class="num">Measured</th><th class="num">Required</th><th></th></tr></thead><tbody></tbody></table>
+        <div class="row" style="margin-top:10px"><button id="copy" type="button">Copy summary</button><span id="copied"></span></div>
+      </section>
+
+      <section class="panel card">
+        <h2>ADU design</h2>
+        <div class="grid2">
+          <label style="grid-column:1/-1">Footprint
+            <select id="design">
+              <option value="16x24">Studio, 16 × 24 ft (384 sq ft)</option>
+              <option value="20x30" selected>One bedroom, 20 × 30 ft (600 sq ft)</option>
+              <option value="24x36">Two bedroom, 24 × 36 ft (864 sq ft)</option>
+              <option value="custom">Custom size</option>
+            </select>
+          </label>
+          <label>Width (ft)<input type="number" id="aw" min="8" max="60" value="20"></label>
+          <label>Depth (ft)<input type="number" id="ad" min="8" max="60" value="30"></label>
+          <label style="grid-column:1/-1">Rotation <span id="rotv" style="font-family:var(--mono)">0°</span>
+            <input type="range" id="rot" min="0" max="175" step="5" value="0">
+          </label>
+        </div>
+        <div class="row" style="margin:10px 0 4px"><button id="best" type="button" class="primary">Find the best spot</button><span id="bestMsg" class="small" style="margin:0"></span></div>
+        <h2 style="margin-top:14px">Which footprints fit this lot</h2>
+        <div id="fits" class="row"></div>
+        <label class="check" style="margin-top:12px"><input type="checkbox" id="tall"><span>Taller than 15 ft and next to an R-1 or R-1A lot (10 ft side setback applies)</span></label>
+        <label class="check"><input type="checkbox" id="showMap" checked><span>Show the green and red fit map</span></label>
+        <label class="check"><input type="checkbox" id="showDim" checked><span>Show distances to lot lines</span></label>
+      </section>
+
+      <section class="panel card">
+        <h2>Zoning rules for this lot</h2>
+        <div class="grid2">
+          <label style="grid-column:1/-1">Zoning district
+            <select id="dist"></select>
+          </label>
+          <label>Front setback (ft)<input type="number" id="rFront" min="0" value="20"></label>
+          <label>Side setback (ft)<input type="number" id="rSide" min="0" value="5"></label>
+          <label>Rear setback (ft)<input type="number" id="rRear" min="0" value="10"></label>
+          <label>Max lot coverage (%)<input type="number" id="rCov" min="1" max="100" value="40"></label>
+          <label>Gap from buildings (ft)<input type="number" id="rSep" min="0" value="0"></label>
+          <label>Main house floor area (sq ft)<input type="number" id="house" min="0" placeholder="optional"></label>
+        </div>
+        <p class="small">District values are for a single-family detached home, from Table 21.06-1 in AMC 21.06.020. Chugiak-Eagle River, Girdwood and Downtown have their own tables and are not included. ADU rules come from AMC 21.05.070D.1: same setbacks as the district, no setback on a side or rear line next to an alley, house plus all accessory buildings within the lot coverage limit, and floor area up to 900 sq ft or 40% of the main house, whichever is greater, never over 1,200 sq ft. In R-1 and R-1A, lots under 10,000 sq ft may go to 50% coverage when the whole house is under 16 ft tall. The gap from buildings is not a zoning rule; set it if your reviewer asks for one.</p>
+      </section>
+
+      <section class="panel card">
+        <h2>Other reviews this lot may need</h2>
+        <label class="check"><input type="checkbox" class="flag" data-k="row"><span>New driveway or utility extension</span></label>
+        <label class="check"><input type="checkbox" class="flag" data-k="seis"><span>In seismic hazard zone 4 or 5</span></label>
+        <label class="check"><input type="checkbox" class="flag" data-k="septic"><span>On a well or septic system</span></label>
+        <label class="check"><input type="checkbox" class="flag" data-k="flood"><span>In a flood zone or within 300 ft of one</span></label>
+        <label class="check"><input type="checkbox" class="flag" data-k="slope"><span>Average slope over 20%</span></label>
+        <ul class="need" id="need"></ul>
+        <p class="small">From the Municipality's Pre-Approved ADU Plans permit checklist (March 2026). Today these come up at the zoning review meeting. In a full version the map layers would answer them from the address.</p>
+      </section>
+
+      <section class="panel card">
+        <h2>What a full version would add</h2>
+        <p style="margin:0">Flood zone, seismic zone, slope and water and sewer service are looked up from the address, the way the lot lines and building outlines already are. An aerial photo sits under the drawing. Footprints come from the pre-approved plan catalog. Existing surveys on file with the Municipality load without an upload. The result is a one-page slip to bring to the zoning review meeting and hand to your surveyor.</p>
+      </section>
+    </aside>
+  </div>
+</div>
+
+<script type="importmap">
+{"imports":{
+  "@turf/intersect":"https://cdn.jsdelivr.net/npm/@turf/intersect@7.2.0/+esm",
+  "@turf/helpers":"https://cdn.jsdelivr.net/npm/@turf/helpers@7.2.0/+esm"
+}}
+</script>
+<script type="module" src="ui.js"></script>
+</body>
+</html>
