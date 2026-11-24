@@ -91,35 +91,67 @@ input[type=range]{width:100%}
 .need{margin:8px 0 0;padding-left:18px;font-size:14px} .need li{margin:4px 0}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 #copied{font-size:12.5px;color:var(--ok)}
+a{color:var(--accent)}
+h3{font-family:var(--display);font-size:13px;font-weight:600;color:var(--muted);margin:14px 0 8px}
+/* "more detail" notes: plain words stay in view, the numbers and sources open on request */
+details>summary{cursor:pointer;color:var(--accent);font-size:13.5px;margin:8px 0 4px}
+summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* the sections on the right open and close, so the one in use can sit beside the drawing */
+details.card>summary{display:flex;align-items:center;gap:10px;margin:0;color:inherit;list-style:none}
+details.card>summary::-webkit-details-marker{display:none}
+details.card>summary h2{margin:0;flex:1}
+details.card>summary::after{content:"+";font-family:var(--mono);font-size:18px;line-height:1;color:var(--muted)}
+details.card[open]>summary::after{content:"\2212"}
+details.card[open]>summary{margin-bottom:10px}
+.cardbar{justify-content:flex-end}.cardbar button{font-size:12.5px;padding:3px 8px}
+.notice details summary{color:inherit;text-decoration:underline;margin:6px 0 0}
+.notice ul{margin:6px 0 0;padding-left:18px}
+.steps{margin:0;padding-left:20px}.steps li{margin:5px 0}
+details.tools .bar{margin-top:6px}
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
     <h1>ADU Fit Check <span class="proto">Prototype</span></h1>
-    <p>Put a survey on the table, drop an ADU on it, and see where it fits. Green fits. Red does not, and the slip on the right says why.</p>
+    <p>Thinking about a backyard cottage or an apartment over the garage? Type your address to see whether an accessory dwelling unit (ADU) could fit on your lot, and what it would take to build one.</p>
   </header>
-  <div class="notice" role="note"><b>This is a prototype, for ideas and discussion only.</b> It is not a permit, an approval or a zoning determination. Before you rely on anything shown here, the Municipality's permitting and zoning staff need to look at your lot and your plans. The sample survey is made up. The ADU plans are from the Municipality's pre-approved catalog, but their footprints here are estimates, because the plan sheets print no dimensions. Setbacks and lot coverage come from the Anchorage zoning code for the district you pick. Results are screening only. Zoning staff make the determination.</div>
+  <div class="notice" role="note"><b>This is a prototype, for ideas and discussion.</b> It can show whether an ADU looks possible on your lot. It is not a permit or an approval. The Municipality's permitting and zoning staff need to look at your lot and your plans before you rely on anything here. Results are screening only. Zoning staff make the determination.
+    <details>
+      <summary>What this page can and cannot tell you</summary>
+      <ul>
+        <li>It checks the main zoning rules for a detached ADU: how far it must stay from each lot line, how much of the lot the buildings may cover, and how big the ADU may be.</li>
+        <li>It does not check the building code, building height, utilities, parking, or anything a surveyor or engineer would measure on site.</li>
+        <li>After an address lookup, the lot lines and buildings come from the Municipality's maps. They are not a survey and may not show recent work.</li>
+        <li>The ADU designs are the Municipality's pre-approved plans. Their sizes on the ground are estimates here, because the plan sheets do not print dimensions.</li>
+        <li>The survey you see before you type an address is a made-up sample.</li>
+      </ul>
+    </details>
+  </div>
 
   <div class="main">
-    <section class="panel stage" aria-label="Survey">
+    <section class="panel stage" aria-label="Your lot">
       <div class="inline on" id="addrBox">
+        <b style="flex-basis:100%">Start here: type your address</b>
         <input type="text" id="addr" placeholder="Anchorage street address, like 123 W 10TH AVE" style="flex:1;min-width:220px" aria-label="Street address">
         <button id="addrGo" type="button" class="primary">Look up address</button>
         <span id="addrMsg" class="small" style="margin:0;flex-basis:100%" aria-live="polite"></span>
         <div id="addrPick" class="row" style="flex-basis:100%"></div>
       </div>
-      <div class="bar">
-        <label class="filebtn">Upload survey<input type="file" id="file" accept="image/*,application/pdf"></label>
-        <button id="sample" type="button">Use sample</button>
-        <button id="ai" type="button" hidden>Read survey with AI</button>
-        <span class="sep"></span>
-        <button type="button" data-mode="scale"><span class="n">1</span>Scale</button>
-        <button type="button" data-mode="lot"><span class="n">2</span>Lot lines</button>
-        <button type="button" data-mode="bldg"><span class="n">3</span>Buildings</button>
-        <button type="button" data-mode="nobuild"><span class="n">4</span>No-build areas</button>
-        <button type="button" data-mode="place"><span class="n">5</span>Place ADU</button>
-      </div>
+      <details class="tools" id="tools">
+        <summary>Have a survey of your lot? Use it instead, or fix the drawing</summary>
+        <div class="bar">
+          <label class="filebtn">Upload survey<input type="file" id="file" accept="image/*,application/pdf"></label>
+          <button id="sample" type="button">Use sample</button>
+          <button id="ai" type="button" hidden>Read survey with AI</button>
+          <span class="sep"></span>
+          <button type="button" data-mode="scale"><span class="n">1</span>Scale</button>
+          <button type="button" data-mode="lot"><span class="n">2</span>Lot lines</button>
+          <button type="button" data-mode="bldg"><span class="n">3</span>Buildings</button>
+          <button type="button" data-mode="nobuild"><span class="n">4</span>No-build areas</button>
+          <button type="button" data-mode="place"><span class="n">5</span>Place ADU</button>
+        </div>
+      </details>
       <div class="guide" id="guide"></div>
       <div class="inline" id="scaleBox">
         <span>Distance between the two points</span>
@@ -134,7 +166,7 @@ input[type=range]{width:100%}
         <button id="undo" type="button">Undo</button>
         <button id="clear" type="button">Clear all of these</button>
       </div>
-      <div class="inline" id="viewBox" role="group" aria-label="What is shown under the lot lines">
+      <div class="inline" id="viewBox" role="group" aria-label="How to look at the lot">
         <button type="button" id="viewDrawing" aria-pressed="true">Drawing</button>
         <button type="button" id="viewAerial" aria-pressed="false">Aerial photo</button>
         <span class="sep"></span>
@@ -149,53 +181,66 @@ input[type=range]{width:100%}
         <span id="threeMsg" class="small" style="margin:0;flex-basis:100%" aria-live="polite"></span>
       </div>
       <div class="cvwrap">
-        <canvas id="cv" tabindex="0" aria-label="Survey drawing. In Place ADU mode, drag the ADU or use arrow keys to move it one foot."></canvas>
-        <div id="three" hidden tabindex="0" role="group" aria-label="3D view of the lot, as blocks. Drag or use the arrow keys to turn it, and plus and minus to zoom. The plan-check table and the sentence under Shadows give the same information in words."></div>
+        <canvas id="cv" tabindex="0" aria-label="Drawing of the lot. Drag the ADU, or use the arrow keys to move it one foot. The Does it fit section gives the same information in words."></canvas>
+        <div id="three" hidden tabindex="0" role="group" aria-label="3D view of the lot, as blocks. Drag or use the arrow keys to turn it, and plus and minus to zoom. The Does it fit section and the sentence under Sun and shadows give the same information in words."></div>
       </div>
       <div class="legend">
-        <span><span class="sw" style="background:rgba(23,140,80,.45)"></span>ADU fits with its center here</span>
-        <span><span class="sw" style="background:rgba(200,45,35,.4)"></span>Does not fit</span>
-        <span><span class="sw" style="background:#7d8ea3"></span>Existing building (numbered)</span>
-        <span><span class="sw" style="background:repeating-linear-gradient(45deg,#d98a00 0 3px,#fff 3px 6px)"></span>No-build area</span>
+        <span><span class="sw" style="background:rgba(23,140,80,.45)"></span>Green: the ADU fits with its middle here</span>
+        <span><span class="sw" style="background:rgba(200,45,35,.4)"></span>Red: it does not fit</span>
+        <span><span class="sw" style="background:#7d8ea3"></span>Grey: buildings already there (numbered)</span>
+        <span><span class="sw" style="background:repeating-linear-gradient(45deg,#d98a00 0 3px,#fff 3px 6px)"></span>Orange: area you cannot build on</span>
       </div>
     </section>
 
-    <aside class="side">
-      <section class="panel card" aria-live="polite">
-        <h2>Plan check</h2>
-        <div id="status" class="status idle"><span class="dot"></span><span id="statusText"></span></div>
-        <ul class="why" id="why"></ul>
-        <table id="checks"><thead><tr><th>Check</th><th class="num">Measured</th><th class="num">Required</th><th></th></tr></thead><tbody></tbody></table>
-        <div class="row" style="margin-top:10px"><button id="copy" type="button">Copy summary</button><span id="copied"></span></div>
-        <p class="small">Prototype result, for ideas and discussion. "Fits" is not an approval: permitting and zoning staff must review any real project.</p>
-      </section>
+    <aside class="side" id="cards">
+      <div class="row cardbar"><button type="button" id="openAll">Open all sections</button><button type="button" id="closeAll">Close all sections</button></div>
 
-      <section class="panel card">
-        <h2>ADU design</h2>
+      <details class="panel card" id="card-fit" open>
+        <summary><h2>Does it fit?</h2><span id="fitTag" class="tag"></span></summary>
+        <div aria-live="polite">
+          <div id="status" class="status idle"><span class="dot"></span><span id="statusText"></span></div>
+          <ul class="why" id="why"></ul>
+          <p id="nextHint" style="margin:0 0 10px"></p>
+        </div>
+        <details>
+          <summary>The measurements, for builders and reviewers</summary>
+          <table id="checks"><thead><tr><th>Check</th><th class="num">Measured</th><th class="num">Required</th><th></th></tr></thead><tbody></tbody></table>
+        </details>
+        <div class="row" style="margin-top:10px"><button id="copy" type="button">Copy a summary to share</button><span id="copied"></span></div>
+        <p class="small">The summary lists every measurement, so you can paste it into an email to a builder or bring it to your zoning review meeting. This is a prototype result: "fits" is not an approval. Permitting and zoning staff must review any real project.</p>
+      </details>
+
+      <details class="panel card" id="card-design" open>
+        <summary><h2>Choose an ADU design</h2></summary>
         <div class="grid2">
-          <label style="grid-column:1/-1">Footprint
+          <label style="grid-column:1/-1">Design
             <select id="design">
-              <option value="custom" selected>Custom size</option>
+              <option value="custom" selected>My own size</option>
             </select>
           </label>
-          <p class="small" id="planNote" style="grid-column:1/-1;margin:0" aria-live="polite"></p>
+          <div class="small" id="planNote" style="grid-column:1/-1;margin:0" aria-live="polite"></div>
           <label>Width (ft)<input type="number" id="aw" min="8" max="60" step="0.5" value="20"></label>
           <label>Depth (ft)<input type="number" id="ad" min="8" max="60" step="0.5" value="30"></label>
-          <label style="grid-column:1/-1">Rotation <span id="rotv" style="font-family:var(--mono)">0°</span>
+          <label style="grid-column:1/-1">Turn it <span id="rotv" style="font-family:var(--mono)">0°</span>
             <input type="range" id="rot" min="0" max="175" step="5" value="0">
           </label>
         </div>
         <div class="row" style="margin:10px 0 4px"><button id="best" type="button" class="primary">Find the best spot</button><span id="bestMsg" class="small" style="margin:0"></span></div>
-        <h2 style="margin-top:14px">Which footprints fit this lot</h2>
+        <h3>Which designs fit on this lot</h3>
         <div id="fits" class="row"></div>
-        <label class="check" style="margin-top:12px"><input type="checkbox" id="tall"><span>Taller than 15 ft and next to an R-1 or R-1A lot (10 ft side setback applies)</span></label>
-        <label class="check"><input type="checkbox" id="showMap" checked><span>Show the green and red fit map</span></label>
-        <label class="check"><input type="checkbox" id="showDim" checked><span>Show distances to lot lines</span></label>
-      </section>
+        <label class="check" style="margin-top:12px"><input type="checkbox" id="showMap" checked><span>Show the green and red areas</span></label>
+        <label class="check"><input type="checkbox" id="showDim" checked><span>Show distances to the lot lines</span></label>
+        <details>
+          <summary>For builders and reviewers</summary>
+          <label class="check"><input type="checkbox" id="tall"><span>The ADU is taller than 15 ft and next to an R-1 or R-1A lot. A 10 ft side setback then applies (AMC 21.05.070D.1).</span></label>
+          <p class="small">Width and depth are the outside size on the ground. For a pre-approved plan the floor area comes from the Municipality's plan sheet; for your own size the page treats it as one story.</p>
+        </details>
+      </details>
 
-      <section class="panel card">
-        <h2>Shadows</h2>
-        <label class="check"><input type="checkbox" id="sunOn" disabled><span>Show shadows on the drawing</span></label>
+      <details class="panel card" id="card-sun">
+        <summary><h2>Sun and shadows</h2></summary>
+        <p style="margin:0 0 8px">See where shadows would fall on your yard and your neighbours' at any time of year. Winter shadows in Anchorage are very long.</p>
+        <label class="check"><input type="checkbox" id="sunOn" disabled><span>Show shadows</span></label>
         <div class="grid2">
           <label>Date<input type="date" id="sunDate"></label>
           <label>ADU height (ft)<input type="number" id="aduH" min="6" max="60" step="0.5" value="15"></label>
@@ -210,44 +255,100 @@ input[type=range]{width:100%}
           <button type="button" data-sunday="today">Today</button>
         </div>
         <p class="small" id="sunMsg" aria-live="polite"></p>
-        <p class="small">For thinking and discussion only. No shadow rule is checked. The drawing treats the ground as flat and every building as a flat-topped block at the height in the Municipality's building map, which looks to be the highest point of the roof, so building shadows are a little overstated. Trees and fences are not shown, and they often matter more. The plan sheets print no height, so the ADU height starts as a guess: change it to your own.</p>
-      </section>
+        <details>
+          <summary>How the shadows are worked out</summary>
+          <p class="small">For thinking and discussion only. No shadow rule is checked. The drawing treats the ground as flat and every building as a flat-topped block at the height in the Municipality's building map, which looks to be the highest point of the roof, so building shadows are a little overstated. Trees and fences are not shown, and they often matter more. The plan sheets print no height, so the ADU height starts as a guess: change it to your own.</p>
+        </details>
+      </details>
 
-      <section class="panel card">
-        <h2>Zoning rules for this lot</h2>
-        <div class="grid2">
-          <label style="grid-column:1/-1">Zoning district
-            <select id="dist"></select>
-          </label>
-          <label>Front setback (ft)<input type="number" id="rFront" min="0" value="20"></label>
-          <label>Side setback (ft)<input type="number" id="rSide" min="0" value="5"></label>
-          <label>Rear setback (ft)<input type="number" id="rRear" min="0" value="10"></label>
-          <label>Max lot coverage (%)<input type="number" id="rCov" min="1" max="100" value="40"></label>
-          <label>Gap from buildings (ft)<input type="number" id="rSep" min="0" value="0"></label>
-          <label>Main house floor area (sq ft)<input type="number" id="house" min="0" placeholder="optional"></label>
-        </div>
-        <p class="small">District values are for a single-family detached home, from Table 21.06-1 in AMC 21.06.020. Chugiak-Eagle River, Girdwood and Downtown have their own tables and are not included. On a lot with more than one street side, every street line gets the full front setback and there is no rear setback (AMC 21.06.030C.4); the zoning director decides the setbacks on such a lot. ADU rules come from AMC 21.05.070D.1: same setbacks as the district, no setback on a side or rear line next to an alley, house plus all accessory buildings within the lot coverage limit, and floor area, not counting a related garage, up to 900 sq ft or 40% of the main house, whichever is greater, never over 1,200 sq ft. The same section limits an ADU to 25 ft in height, or 30 ft over a garage; this page does not check height. In R-1 and R-1A, lots under 10,000 sq ft may go to 50% coverage when the whole house is under 16 ft tall. The gap from buildings is not a zoning rule; set it if your reviewer asks for one.</p>
-      </section>
+      <details class="panel card" id="card-steps">
+        <summary><h2>What it takes to build one</h2></summary>
+        <p style="margin:0 0 8px">If an ADU looks possible on your lot, these are the steps the Municipality lists for its pre-approved plans.</p>
+        <ol class="steps">
+          <li><b>Pick a design.</b> The pre-approved plans are at <a href="https://www.muni.org/ADU" target="_blank" rel="noopener noreferrer">muni.org/ADU</a>. You can ask there for a free "not for construction" set to get prices from builders.</li>
+          <li><b>Book a free zoning review meeting.</b> Call 907-343-8336. Staff look at your lot with you and confirm whether it is ready for an ADU. Bring the summary from this page.</li>
+          <li><b>Call the water and sewer utility early.</b> AWWU Field Services, 907-564-2762.</li>
+          <li><b>Get a plot plan.</b> A land surveyor draws your lot with the ADU on it.</li>
+          <li><b>Find a builder.</b></li>
+          <li><b>Apply for the permit</b> with the plot plan and the Municipality's forms.</li>
+          <li><b>Build it.</b> Inspectors visit during construction, and at the end you receive a Certificate of Occupancy.</li>
+        </ol>
+        <p class="small">These steps are from the Municipality's Pre-Approved ADU Plans permit checklist (March 2026), which also lists typical costs and times. See <a href="https://www.muni.org/ADU" target="_blank" rel="noopener noreferrer">muni.org/ADU</a> for the current version.</p>
+      </details>
 
-      <section class="panel card" aria-live="polite">
-        <h2>Other reviews this lot may need</h2>
-        <label class="check"><input type="checkbox" class="flag" data-k="row"><span>New driveway or utility extension</span></label>
-        <label class="check"><input type="checkbox" class="flag" data-k="seis"><span>In seismic hazard zone 4 or 5</span></label>
+      <details class="panel card" id="card-reviews">
+        <summary><h2>Extra steps your lot may need</h2></summary>
+        <p style="margin:0 0 8px">Some lots need an extra review before a permit. After an address lookup, the Municipality's maps fill in what they can. You can change any box.</p>
+        <label class="check"><input type="checkbox" class="flag" data-k="row"><span>I would add a driveway or extend utilities</span></label>
+        <label class="check"><input type="checkbox" class="flag" data-k="seis"><span>The lot is in an earthquake hazard area (seismic zone 4 or 5)</span></label>
         <p class="small flagsrc" id="src-seis"></p>
-        <label class="check"><input type="checkbox" class="flag" data-k="septic"><span>On a well or septic system</span></label>
+        <label class="check"><input type="checkbox" class="flag" data-k="septic"><span>The lot has its own well or septic system</span></label>
         <p class="small flagsrc" id="src-septic"></p>
-        <label class="check"><input type="checkbox" class="flag" data-k="flood"><span>In a flood zone or within 300 ft of one</span></label>
+        <label class="check"><input type="checkbox" class="flag" data-k="flood"><span>The lot is in a flood zone or within 300 ft of one</span></label>
         <p class="small flagsrc" id="src-flood"></p>
-        <label class="check"><input type="checkbox" class="flag" data-k="slope"><span>Average slope over 20%</span></label>
+        <label class="check"><input type="checkbox" class="flag" data-k="slope"><span>The lot is steep (average slope over 20%)</span></label>
         <p class="small flagsrc" id="src-slope"></p>
+        <h3>What that means for you</h3>
         <ul class="need" id="need"></ul>
-        <p class="small">From the Municipality's Pre-Approved ADU Plans permit checklist (March 2026). After an address lookup, the seismic, flood and slope boxes are filled from the Municipality's map layers, with the layer and its date shown under each one. Check them: some layers are several years old, and you can change any box. Well and septic and the driveway question are yours to answer. Results are screening only.</p>
-      </section>
+        <details>
+          <summary>Where this comes from</summary>
+          <p class="small">The list is from the Municipality's Pre-Approved ADU Plans permit checklist (March 2026). After an address lookup, the seismic, flood and slope boxes are filled from the Municipality's map layers, with the layer and its date shown under each one. Check them: some layers are several years old. Well and septic and the driveway question are yours to answer. Results are screening only.</p>
+        </details>
+      </details>
 
-      <section class="panel card">
-        <h2>What a full version would add</h2>
-        <p style="margin:0">Footprints use the exact dimensions from the pre-approved plan sets. Existing surveys on file with the Municipality load without an upload. The result is a one-page slip to bring to the zoning review meeting and hand to your surveyor.</p>
-      </section>
+      <details class="panel card" id="card-rules">
+        <summary><h2>The rules used for this lot</h2></summary>
+        <p style="margin:0 0 8px">An ADU has to stay a set distance back from each lot line (a setback), and all the buildings together may only cover part of the lot. After an address lookup, this page fills in the rules for your zoning district.</p>
+        <label>Zoning district
+          <select id="dist"></select>
+        </label>
+        <details>
+          <summary>The numbers and code sections, for builders and reviewers</summary>
+          <div class="grid2">
+            <label>Front setback (ft)<input type="number" id="rFront" min="0" value="20"></label>
+            <label>Side setback (ft)<input type="number" id="rSide" min="0" value="5"></label>
+            <label>Rear setback (ft)<input type="number" id="rRear" min="0" value="10"></label>
+            <label>Max lot coverage (%)<input type="number" id="rCov" min="1" max="100" value="40"></label>
+            <label>Gap from buildings (ft)<input type="number" id="rSep" min="0" value="0"></label>
+            <label>Main house floor area (sq ft)<input type="number" id="house" min="0" placeholder="optional"></label>
+          </div>
+          <p class="small">District values are for a single-family detached home, from Table 21.06-1 in AMC 21.06.020. Chugiak-Eagle River, Girdwood and Downtown have their own tables and are not included. On a lot with more than one street side, every street line gets the full front setback and there is no rear setback (AMC 21.06.030C.4); the zoning director decides the setbacks on such a lot. ADU rules come from AMC 21.05.070D.1: same setbacks as the district, no setback on a side or rear line next to an alley, house plus all accessory buildings within the lot coverage limit, and floor area, not counting a related garage, up to 900 sq ft or 40% of the main house, whichever is greater, never over 1,200 sq ft. The same section limits an ADU to 25 ft in height, or 30 ft over a garage; this page does not check height. In R-1 and R-1A, lots under 10,000 sq ft may go to 50% coverage when the whole house is under 16 ft tall. The gap from buildings is not a zoning rule; set it if your reviewer asks for one.</p>
+        </details>
+      </details>
+
+      <details class="panel card" id="card-notes">
+        <summary><h2>Notes for builders and permitting staff</h2></summary>
+        <details>
+          <summary>What the words mean</summary>
+          <ul class="small">
+            <li><b>ADU:</b> accessory dwelling unit. A second, smaller home on the same lot as a house.</li>
+            <li><b>Lot line:</b> the edge of your property. The front lot line is the one along the street.</li>
+            <li><b>Setback:</b> how far a building must stay back from a lot line.</li>
+            <li><b>Lot coverage:</b> the share of the lot covered by buildings, counting the house, garage, sheds and the ADU.</li>
+            <li><b>Plot plan:</b> a surveyor's drawing of the lot showing where the new building would go.</li>
+            <li><b>Zoning district:</b> the Municipality's label for what can be built in an area, such as R-1.</li>
+          </ul>
+        </details>
+        <details>
+          <summary>Where the map data comes from</summary>
+          <p class="small">All from the Municipality of Anchorage's public map services, read by your browser. Lot lines, address and zoning district: the assessor's property layer (owner names are never requested). Buildings and their heights: the Buildings layer. Front lot lines and alleys: street and alley centrelines. Seismic zones, FEMA flood areas and AWWU service records fill the extra-steps boxes. Aerial photos are the Municipality's 2026 photo, or 2024 if that does not load. Coordinates are NAD 1983 State Plane Alaska Zone 4, in feet. Nothing you type is stored by this page.</p>
+        </details>
+        <details>
+          <summary>Not yet confirmed with Municipality staff</summary>
+          <ul class="small">
+            <li>The exact width, depth and height of the two pre-approved plans. The sizes here are estimates scaled from the plan cover sheets.</li>
+            <li>Whether the Williwaw's 176 sq ft entryway counts toward ADU floor area.</li>
+            <li>The note that small R-1 and R-1A lots may go to 50% coverage.</li>
+            <li>Whether the 2019 seismic zone layer is the one in use, and whether the 500 year floodplain counts as a flood zone.</li>
+            <li>What the height field in the building map measures.</li>
+            <li>The map projection, and whether a right-of-way layer exists.</li>
+          </ul>
+        </details>
+        <details>
+          <summary>About this prototype</summary>
+          <p class="small">This is open-source software (MIT licence): <a href="https://github.com/codeforanchorage/adu-fit-check" target="_blank" rel="noopener noreferrer">github.com/codeforanchorage/adu-fit-check</a>. A full version would use the exact dimensions from the pre-approved plan sets, load surveys already on file with the Municipality, and produce a one-page slip to bring to the zoning review meeting and hand to your surveyor.</p>
+        </details>
+      </details>
     </aside>
   </div>
 </div>

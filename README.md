@@ -63,6 +63,12 @@ Upload the contents of `deploy_dreamhost/` to `experiments/adu-fit/`, then:
 python build_deploy.py --verify   # compares the live files with the build
 ```
 
+## Who the page is written for
+
+The page is written for residents first: plain words, a clear "could fit" or "does not fit", and the Municipality's next steps. The measurements, code sections, data sources and open questions are kept for builders and permitting staff in notes that open on request ("for builders and reviewers") and in the last section on the right. When adding a feature, put the plain-language result in view and the detail in a note.
+
+The sections on the right open and close. Opening the 3D view closes all of them except "Sun and shadows", so its controls sit beside the model on a laptop.
+
 ## Changing a zoning number
 
 Every number in `rules.js` carries the code section it comes from. Read the current section before changing one, and update the citation in the comment and in the page text together.

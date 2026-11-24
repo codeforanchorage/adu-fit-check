@@ -91,7 +91,8 @@ export function check(scene,poly,R,quick){
   const inLot=poly.every(p=>inside(p,S.lot))&&!crosses(poly,S.lot);
   if(!inLot){fail("Part of the ADU is outside the lot lines.");if(quick)return {ok:false}}
   for(let i=0;i<S.lot.length;i++){
-    const t=S.types[i],req=reqFor(t,R),d=inLot?polySeg(poly,S.lot[i],S.lot[(i+1)%S.lot.length])*f:0;
+    // a line with no label yet is checked as a side
+    const t=S.types[i]||"side",req=reqFor(t,R),d=inLot?polySeg(poly,S.lot[i],S.lot[(i+1)%S.lot.length])*f:0;
     const pass=inLot&&d>=req-0.05;
     if(!pass&&inLot)fail(f1(d)+" ft from "+TNAME[t].toLowerCase()+" lot line "+L(i)+". "+req+" ft required"+(t==="side"&&R.tall&&R.side<10?" for an ADU taller than 15 ft next to an R-1 or R-1A lot":"")+".");
     if(quick&&!pass)return {ok:false};

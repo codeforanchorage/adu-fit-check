@@ -35,11 +35,13 @@ function bestSpot(){if(!ready())return null;const R=rules();if(!globalOk(R))retu
 let PLANS=[];
 function computeFits(){const box=$("fits");box.innerHTML="";if(!ready()){return}const keep={...S.adu};
   PLANS.forEach(p=>{S.adu.w=p.w;S.adu.d=p.d;S.adu.floorArea=p.floorArea;const b=bestSpot();const btn=document.createElement("button");btn.type="button";btn.className="fitbtn";
-    const t=document.createElement("span");t.textContent=p.name+" "+(p.approx?"about ":"")+p.w+" × "+p.d;const g=document.createElement("span");g.className="tag "+(b?"ok":"bad");g.textContent=b?"Fits":"No spot";btn.append(t,g);
+    const t=document.createElement("span");t.textContent=p.name;const g=document.createElement("span");g.className="tag "+(b?"ok":"bad");g.textContent=b?"Could fit":"No room";btn.append(t,g);
     btn.addEventListener("click",()=>{$("design").value=p.id;design();goBest()});box.appendChild(btn)});
   Object.assign(S.adu,keep)}
-function goBest(){const b=bestSpot();if(!b){$("bestMsg").textContent="No spot fits this footprint. Try a smaller one or a different rotation.";return}
-  $("bestMsg").textContent="Placed with "+f1(Math.max(0,b.m))+" ft to spare.";S.adu.x=b.x;S.adu.y=b.y;S.adu.rot=b.rot;$("rot").value=b.rot;$("rotv").textContent=b.rot+"°";S.mapDirty=true;if(S.mode!=="place")setMode("place");else update()}
+// move the ADU to the spot with the most room to spare, if there is one. Returns that spot or null.
+function placeBest(){const b=bestSpot();if(b){S.adu.x=b.x;S.adu.y=b.y;S.adu.rot=b.rot;$("rot").value=b.rot;$("rotv").textContent=b.rot+"°";S.mapDirty=true;update()}return b}
+function goBest(){if(S.mode!=="place")setMode("place");const b=placeBest();
+  $("bestMsg").textContent=b?"Placed with "+f1(Math.max(0,b.m))+" ft to spare.":"There is no room for this design on the lot. Try a smaller one, or turn it."}
 
 /* ---------- drawing ---------- */
 function layout(){
@@ -98,7 +100,6 @@ function draw(){
     cx.fillText((S.adu.plan?S.adu.plan.name.replace(/^The /,""):"ADU")+" "+S.adu.w+" × "+S.adu.d,X(S.adu),Y(S.adu)-8);cx.fillText(ok?"Fits":"Does not fit",X(S.adu),Y(S.adu)+9)}
   if(S.three)sync3d();
 }
-function label(t,p,c){cx.font="500 11px 'IBM Plex Sans',sans-serif";cx.textAlign="center";cx.textBaseline="middle";cx.fillStyle=c;cx.fillText(t,X(p),Y(p))}
 function badge(t,p){cx.beginPath();cx.arc(X(p),Y(p),9,0,7);cx.fillStyle="#3d5068";cx.fill();cx.font="600 11px 'IBM Plex Sans',sans-serif";cx.fillStyle="#fff";cx.textAlign="center";cx.textBaseline="middle";cx.fillText(t,X(p),Y(p)+0.5)}
 function chip(t,p){cx.font="600 11px 'IBM Plex Sans',sans-serif";const w=cx.measureText(t).width+10;cx.fillStyle="#1f5fa8";cx.fillRect(X(p)-w/2,Y(p)-9,w,18);cx.fillStyle="#fff";cx.textAlign="center";cx.textBaseline="middle";cx.fillText(t,X(p),Y(p)+0.5)}
 
@@ -106,9 +107,13 @@ function chip(t,p){cx.font="600 11px 'IBM Plex Sans',sans-serif";const w=cx.meas
 function update(){
   const needFits=S.mapDirty;
   const st=$("status"),tx=$("statusText"),why=$("why"),tb=$("checks").tBodies[0];why.innerHTML="";tb.innerHTML="";
-  if(!ready()){S.result=null;st.className="status idle";tx.textContent=!S.ftPerPx?"Set the scale first (step 1).":"Trace the lot lines (step 2).";draw();$("fits").innerHTML="";return}
+  const tag=$("fitTag"),hint=$("nextHint");
+  if(!ready()){S.result=null;st.className="status idle";tx.textContent=!S.ftPerPx?"Set the scale first (step 1).":"Trace the lot lines (step 2).";tag.className="tag";tag.textContent="";hint.textContent="";draw();$("fits").innerHTML="";return}
   const r=check(S,aduPoly(S.adu.x,S.adu.y),rules(),false);S.result=r;
-  st.className="status "+(r.ok?"ok":"bad");tx.textContent=r.ok?"Fits here":"Does not fit here";
+  st.className="status "+(r.ok?"ok":"bad");tx.textContent=r.ok?"This ADU could fit here":"It does not fit at this spot";
+  tag.className="tag "+(r.ok?"ok":"bad");tag.textContent=r.ok?"Could fit":"Does not fit";
+  hint.textContent=r.ok?"That is a good sign. The next step is a free zoning review meeting with the Municipality: open \"What it takes to build one\" below."
+    :"Drag it to a green area, turn it, or press \"Find the best spot\". The buttons under \"Which designs fit on this lot\" show which designs have room.";
   r.why.forEach(w=>{const li=document.createElement("li");li.textContent=w;why.appendChild(li)});
   r.rows.forEach(o=>{const tr=document.createElement("tr");
     [[o.name,""],[o.m,"num"],[o.r,"num"]].forEach(([t,c])=>{const td=document.createElement("td");td.textContent=t;td.className=c;tr.appendChild(td)});
@@ -132,7 +137,7 @@ const GUIDE={
   bldg:"<b>Step 3.</b> Click the corners of each existing building. Click the first corner again to close each one.",
   nobuild:"<b>Step 4.</b> Pick a type, then click the corners of any area you cannot build on, such as an easement or septic field.",
   place:"<b>Step 5.</b> Drag the ADU around the lot, or click a spot to move it there. Arrow keys nudge it one foot."};
-function setMode(m){S.mode=m;S.draft=[];if(m!=="scale")S.scalePts=[];if(S.three&&m!=="place")show3d(false);
+function setMode(m){S.mode=m;S.draft=[];if(m!=="scale")S.scalePts=[];if(S.three&&m!=="place")show3d(false);if(m!=="place")$("tools").open=true;
   document.querySelectorAll("[data-mode]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.mode===m));
   $("guide").innerHTML=GUIDE[m];$("scaleBox").classList.toggle("on",m==="scale"&&S.scalePts.length===2);
   $("shapeBox").classList.toggle("on",m==="lot"||m==="bldg"||m==="nobuild");$("nbLabel").style.display=m==="nobuild"?"":"none";
@@ -167,22 +172,28 @@ $("scaleApply").addEventListener("click",()=>{const ft=parseFloat($("scaleFt").v
 function design(){const p=PLANS.find(p=>p.id===$("design").value)||null;if(p){$("aw").value=p.w;$("ad").value=p.d}
   S.adu.w=Math.max(8,Math.min(60,parseFloat($("aw").value)||20));S.adu.d=Math.max(8,Math.min(60,parseFloat($("ad").value)||30));
   S.adu.plan=p;S.adu.floorArea=p?p.floorArea:null;planNote(p);if(p&&p.heightGuess>0)$("aduH").value=p.heightGuess;S.mapDirty=true;update();sunUpdate()}
-// What the page says about the chosen plan, and where its numbers come from.
+// What the page says about the chosen plan: plain words first, and the numbers and where
+// they come from in a note that opens.
 function planNote(p){const el=$("planNote");el.textContent="";if(!p)return;
-  el.appendChild(document.createTextNode(p.kind+". Designed by "+p.designer+". Floor area "+p.floorArea.toLocaleString()+" sq ft on the Municipality's plan sheet"+(p.overGarage?", not counting the garage":"")+". "
-    +(p.approx?"The footprint, about "+p.w+" × "+p.d+" ft, is an estimate scaled from the drawing on that sheet, which prints no dimensions. Distances shown here may be off by a foot or two. ":"")
-    +(p.stories>1?"This plan is "+(p.stories===2?"two":p.stories)+" stories. If a neighbouring lot is R-1 or R-1A, tick the 10 ft side setback box below. ":"")
-    +"The sheet says: suited for use in "+p.areas+". "));
-  const a=document.createElement("a");a.href=p.sheet;a.target="_blank";a.rel="noopener noreferrer";a.textContent="Plan sheet on muni.org (PDF, new tab)";el.appendChild(a)}
+  const top=document.createElement("p");top.style.margin="0";
+  top.appendChild(document.createTextNode(p.kind+", designed by "+p.designer+". "+p.floorArea.toLocaleString()+" sq ft of living space"+(p.overGarage?", not counting the garage":"")+"."
+    +(p.approx?" Its size on the ground here is an estimate.":"")+" "));
+  const a=document.createElement("a");a.href=p.sheet;a.target="_blank";a.rel="noopener noreferrer";a.textContent="See the plan sheet (PDF, new tab)";top.appendChild(a);el.appendChild(top);
+  const d=document.createElement("details"),sm=document.createElement("summary"),t=document.createElement("p");sm.textContent="About this design's size, for builders and reviewers";t.style.margin="4px 0 0";
+  t.textContent=(p.approx?"The footprint, about "+p.w+" × "+p.d+" ft, is scaled from the drawing on the Municipality's plan sheet, which prints no dimensions. Distances shown here may be off by a foot or two. ":"The footprint is "+p.w+" × "+p.d+" ft. ")
+    +"Floor area is from the plan sheet. "
+    +(p.stories>1?"This plan is "+(p.stories===2?"two":p.stories)+" stories. If a neighbouring lot is R-1 or R-1A, tick the 10 ft side setback box under \"For builders and reviewers\" below. ":"")
+    +"The sheet says: suited for use in "+p.areas+".";
+  d.append(sm,t);el.appendChild(d)}
 async function loadPlans(){
   try{const r=await fetch("./plans.json");if(!r.ok)throw new Error("HTTP "+r.status);const j=await r.json();
     PLANS=(j.plans||[]).filter(p=>p&&p.id&&p.name&&p.w>0&&p.d>0&&p.floorArea>0);
   }catch(e){console.error(e);PLANS=[]}
-  if(!PLANS.length){$("planNote").textContent="The pre-approved plan list could not be loaded. Type a width and depth instead.";return}
+  if(!PLANS.length){$("planNote").textContent="The list of pre-approved designs could not be loaded. Type a width and depth instead.";return}
   const sel=$("design"),custom=sel.querySelector('option[value="custom"]');
-  PLANS.forEach(p=>{const o=document.createElement("option");o.value=p.id;o.textContent=p.name+", "+(p.approx?"about ":"")+p.w+" × "+p.d+" ft ("+p.floorArea.toLocaleString()+" sq ft unit)";sel.insertBefore(o,custom)});
+  PLANS.forEach(p=>{const o=document.createElement("option");o.value=p.id;o.textContent=p.name+" ("+p.floorArea.toLocaleString()+" sq ft of living space)";sel.insertBefore(o,custom)});
   // start on the first plan unless a size has already been typed
-  if($("aw").value==="20"&&$("ad").value==="30"){sel.value=PLANS[0].id;design();if(ready()&&!S.info){const b=bestSpot();if(b){S.adu.x=b.x;S.adu.y=b.y;S.adu.rot=b.rot;$("rot").value=b.rot;$("rotv").textContent=b.rot+"°";S.mapDirty=true;update()}}}
+  if($("aw").value==="20"&&$("ad").value==="30"){sel.value=PLANS[0].id;design();if(ready()&&!S.info){placeBest();}}
   else{S.mapDirty=true;update()}
 }
 $("design").addEventListener("change",design);
@@ -242,7 +253,7 @@ function applyAI(o){if(typeof o==="string"){const a=o.indexOf("{"),b=o.lastIndex
   if(typeof o.zoning==="string"&&DIST[o.zoning.trim().toUpperCase()]){$("dist").value=o.zoning.trim().toUpperCase();$("dist").dispatchEvent(new Event("change"))}
   const c=cen(lot);S.adu.x=c.x;S.adu.y=c.y;S.mapDirty=true;
   if(!scaled){setMode("scale");$("guide").innerHTML="<b>AI traced the lot but could not read a dimension.</b> Click the two ends of a line with a printed length, then type it."}
-  else{setMode("place");const b=bestSpot();if(b){S.adu.x=b.x;S.adu.y=b.y;S.adu.rot=b.rot;$("rot").value=b.rot;$("rotv").textContent=b.rot+"°";update()}
+  else{setMode("place");placeBest();
     $("guide").innerHTML="<b>AI traced this survey. Check it before you rely on it.</b> Compare the blue lot lines, the numbered buildings and the orange areas with the drawing. Use steps 1 to 4 to fix anything that is off."+(o.notes?" AI note: ":"");
     if(o.notes)$("guide").appendChild(document.createTextNode(String(o.notes).slice(0,300)))}}
 $("ai").addEventListener("click",async()=>{if(!sampler||!S.img)return;const btn=$("ai");btn.disabled=true;btn.textContent="Reading the survey…";
@@ -315,6 +326,12 @@ $("sunDate").value=todayIn(TZ);
 ["sunOn","sunDate","sunTime","aduH"].forEach(id=>$(id).addEventListener("input",sunUpdate));
 document.querySelectorAll("[data-sunday]").forEach(b=>b.addEventListener("click",()=>{const t=todayIn(TZ);$("sunDate").value=b.dataset.sunday==="today"?t:t.slice(0,4)+"-"+b.dataset.sunday;sunUpdate()}));
 
+/* ---------- sections on the right ---------- */
+// Each section opens and closes, so the one in use can sit beside the drawing on a small screen.
+const cards=()=>[...document.querySelectorAll("#cards>details")];
+$("openAll").addEventListener("click",()=>cards().forEach(d=>{d.open=true}));
+$("closeAll").addEventListener("click",()=>cards().forEach(d=>{d.open=false}));
+
 /* ---------- 3D view ---------- */
 // A rough block model for thinking about shadows and sight lines (view3d.js, which loads
 // three.js from a CDN the first time "3D view" is pressed). Only after an address lookup.
@@ -355,6 +372,8 @@ async function show3d(on){const btn=$("view3d"),box=$("three");
     catch(e){console.error(e);box.hidden=true;tmsg("The 3D view could not start in this browser. The drawing and the shadows still work.");return}
     if(S.site!==s){box.hidden=true;tmsg("");return}}   // another address or survey was loaded meanwhile
   S.three=true;box.hidden=false;btn.setAttribute("aria-pressed","true");$("v3kinds").hidden=false;
+  // bring the sun controls up beside the model: close the other sections on the right
+  cards().forEach(d=>{d.open=d.id==="card-sun"});
   if(S.mode!=="place")setMode("place");
   v3.resize();build3d(false);view3d("overview")}
 $("view3d").addEventListener("click",()=>show3d(!S.three));
@@ -404,9 +423,9 @@ function sceneFromGIS(info,site){
   applyFrontage();
   const z=normZone(info.zone);if(DIST[z]){$("dist").value=z;const d=DIST[z];$("rFront").value=d[0];$("rSide").value=d[1];$("rRear").value=d[2];$("rCov").value=d[3]}
   const ce=cen(S.lot);S.adu.x=ce.x;S.adu.y=ce.y;S.mapDirty=true;setMode("place");
-  const b=bestSpot();if(b){S.adu.x=b.x;S.adu.y=b.y;S.adu.rot=b.rot;$("rot").value=b.rot;$("rotv").textContent=b.rot+"°";update()}
-  const gd=$("guide");gd.innerHTML="<b>Loaded from Muni GIS. Check the lot line labels.</b> ";
-  gd.appendChild(document.createTextNode(frontageNote()+" To change a label, open step 2 and click it. Building outlines are the Municipality's mapped footprints, cut off at the lot line; they may not show recent construction."+(DIST[z]?"":" Zoning district "+(info.zone||"(blank)")+" is not in the list, so set the setbacks by hand.")));
+  placeBest();
+  const gd=$("guide");gd.innerHTML="<b>This is your lot from the Municipality's map.</b> ";
+  gd.appendChild(document.createTextNode(frontageNote()+" If a label is wrong, open \"Have a survey of your lot?\" above, press 2 Lot lines and click the label. The building outlines come from the map and may not show recent work. Drag the ADU to try other spots."+(DIST[z]?"":" Zoning district "+(info.zone||"(blank)")+" is not in the list, so set the setbacks by hand.")));
   sunUpdate();
 }
 // Fill the "other reviews" boxes from map layers (data.js loadFlags, rules.js flagResults).
@@ -428,20 +447,20 @@ async function lookupFlags(p){
 async function loadParcel(p){const btn=$("addrGo");btn.disabled=true;$("addrPick").innerHTML="";amsg("Found "+p.addr+". Getting the lot lines, buildings and streets…");
   try{const d=await data(),site=await d.loadSite(p);sceneFromGIS({pid:p.pid,addr:p.addr,zone:p.zone,lotSize:p.lotSize},site);lookupFlags(p);
     const n=S.bldgs.length,lotA=S.site.lotA;
-    amsg(p.addr+": "+n+" building"+(n===1?"":"s")+" on the lot, "+Math.round(site.bldgArea).toLocaleString()+" sq ft of footprint, "+f1(site.bldgArea/lotA*100)+"% of the "+Math.round(lotA).toLocaleString()+" sq ft mapped lot."
+    amsg("Found "+p.addr+". The map shows "+n+" building"+(n===1?"":"s")+" covering about "+Math.round(site.bldgArea/lotA*100)+"% of the lot ("+Math.round(site.bldgArea).toLocaleString()+" sq ft of buildings on a "+Math.round(lotA).toLocaleString()+" sq ft lot)."
       +(p.lotSize>0&&Math.abs(p.lotSize-lotA)/lotA>0.01?" The assessor lists the lot as "+Number(p.lotSize).toLocaleString()+" sq ft; this page uses the mapped outline.":"")
       +(p.parts>1?" This parcel has "+p.parts+" separate pieces; only the largest is drawn.":""));
-  }catch(e){console.error(e);amsg("The parcel was found but the map data did not load. Try again in a minute, or upload a survey.")}
+  }catch(e){console.error(e);amsg("Your lot was found but the map data did not load. Try again in a minute, or upload a survey.")}
   btn.disabled=false}
-async function lookup(){const q=$("addr").value.trim();if(!q)return;const btn=$("addrGo"),pick=$("addrPick");btn.disabled=true;pick.innerHTML="";amsg("Looking up the parcel…");
+async function lookup(){const q=$("addr").value.trim();if(!q)return;const btn=$("addrGo"),pick=$("addrPick");btn.disabled=true;pick.innerHTML="";amsg("Looking up your lot…");
   let list;
   try{const d=await data();list=await d.findParcels(q)}
   catch(e){console.error(e);amsg("Address lookup could not reach the Municipality's map service. Try again in a minute, or upload a survey.");btn.disabled=false;return}
   btn.disabled=false;
-  if(!list.length){amsg("No parcel found at that address. Use the short street type, like 123 W 10TH AVE.");return}
+  if(!list.length){amsg("No lot found at that address. Try the short street type, like 123 W 10TH AVE.");return}
   const Q=q.toUpperCase().replace(/\s+/g," "),exact=list.filter(p=>p.addr===Q);
   if(list.length===1||exact.length===1){loadParcel(exact[0]||list[0]);return}
-  amsg(list.length+(list.more?" or more":"")+" parcels match. Pick one"+(list.more?", or type more of the address":"")+".");
+  amsg(list.length+(list.more?" or more":"")+" lots match. Pick yours"+(list.more?", or type more of the address":"")+".");
   list.forEach(p=>pick.appendChild(btnEl(p.addr+"  (parcel "+p.pid+")",()=>loadParcel(p))));
 }
 $("addrGo").addEventListener("click",lookup);$("addr").addEventListener("keydown",e=>{if(e.key==="Enter")lookup()});
@@ -469,7 +488,7 @@ function sample(){
   S.nb=[{label:"Utility easement",pts:[{x:x0,y:y0},{x:x1,y:y0},{x:x1,y:y0+60},{x:x0,y:y0+60}]}];
   S.adu.x=455;S.adu.y=310;setMode("place");
   // the chosen plan may not fit at that spot, so start it where it fits best
-  const b=bestSpot();if(b){S.adu.x=b.x;S.adu.y=b.y;S.adu.rot=b.rot;$("rot").value=b.rot;$("rotv").textContent=b.rot+"°";S.mapDirty=true;update()}
+  placeBest();
 }
 $("sample").addEventListener("click",sample);
 window.addEventListener("resize",()=>{layout();draw();if(S.three&&v3)v3.resize()});
