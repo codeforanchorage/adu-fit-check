@@ -4,7 +4,7 @@
 // Results are screening only. Zoning staff make the determination. Keep that statement in
 // the page notice, on the drawn sheet and in the copied summary.
 
-import {area,inside,ptSeg,cen,rectPoly,clean,openRing,classifyEdges,sweep,f1} from "./geometry.js";
+import {area,inside,ptSeg,cen,rectPoly,clean,openRing,classifyEdges,sweep,f1,traceDiff} from "./geometry.js";
 import {sunPosition,zonedToUtc,todayIn,shadowOffset,compass} from "./sun.js";
 import {SURVEY_READER,EXAMPLE_ADDRESS} from "./config.js";
 import {DIST,TYPES,TNAME,L,check,margin,maxAduArea,autoTypes,typesFromEdges,typesFromTrace,normZone,flagResults} from "./rules.js";
@@ -251,7 +251,7 @@ $("copy").addEventListener("click",async()=>{const r=S.result;if(!r)return;
   setTimeout(()=>$("copied").textContent="",2500)});
 
 /* ---------- loading a survey ---------- */
-function setImage(c){loadSeq++;S.uploaded=false;S.unconfirmed=false;$("aiOk").hidden=true;showAi();
+function setImage(c){loadSeq++;S.uploaded=false;S.unconfirmed=false;S.ai=null;S.sample=false;$("aiOk").hidden=true;showAi();
   // a new lot starts from the page's defaults, not the last lot's district, house size or ticked boxes
   setDistrict("R-1");$("house").value="";$("rSep").value=0;document.querySelectorAll(".flag").forEach(b=>{b.checked=false});flags();setRot(0);$("addrMsg").textContent="";
   S.img=c;S.iw=c.width;S.ih=c.height;S.ftPerPx=null;S.lot=[];S.lotClosed=false;S.types=[];S.bldgs=[];S.nb=[];S.draft=[];S.scalePts=[];S.bldgArea=null;S.info=null;S.site=null;clearFlagNotes();
@@ -261,7 +261,7 @@ function setImage(c){loadSeq++;S.uploaded=false;S.unconfirmed=false;$("aiOk").hi
 function toCanvas(src,w,h){const m=1600/Math.max(w,h),k=Math.min(1,m),c=document.createElement("canvas");c.width=Math.round(w*k);c.height=Math.round(h*k);c.getContext("2d").drawImage(src,0,0,c.width,c.height);return c}
 function loadScript(u){return new Promise((res,rej)=>{const s=document.createElement("script");s.src=u;s.onload=res;s.onerror=rej;document.head.appendChild(s)})}
 // Take a survey file, from the upload button or one of the made-up samples.
-async function useFile(f){
+async function useFile(f,sample){
   // images and PDFs only, 10 MB at most. Nothing is uploaded here: the file is read in the browser.
   if(f.size>10*1024*1024||!(/^image\//.test(f.type)||f.type==="application/pdf"||/\.(pdf|png|jpe?g|gif|webp|bmp)$/i.test(f.name))){
     $("tools").open=true;$("guide").innerHTML="<b>That file cannot be used.</b> Choose a photo, a scan or a PDF of the survey, 10 MB or smaller.";return}
@@ -276,16 +276,16 @@ async function useFile(f){
       const url=URL.createObjectURL(f),im=new Image();
       try{await new Promise((res,rej)=>{im.onload=res;im.onerror=rej;im.src=url});setImage(toCanvas(im,im.naturalWidth,im.naturalHeight))}finally{URL.revokeObjectURL(url)}
     }
-    S.uploaded=true;showAi();setMode("scale");
+    S.uploaded=true;S.sample=!!sample;showAi();setMode("scale");
     $("guide").appendChild(document.createTextNode(" This page starts with the rules for the R-1 zoning district. If your lot is in another one, choose it under \"The rules used for this lot\"."));
-    if(aiOn())$("guide").appendChild(document.createTextNode(" Or press \"Read survey with AI\" for a first tracing to check. That sends the survey image to an AI service to be read."));
+    if(aiOn())$("guide").appendChild(document.createTextNode(" Or press \"Read survey with AI\" for a first tracing to check. That sends the survey image to an AI service to be read. When you accept the tracing, the page reports which parts you changed, and nothing else."));
   }catch(err){$("guide").innerHTML="<b>That file could not be read here.</b> Try a photo or screenshot of the survey (PNG or JPG).";}
 }
 $("file").addEventListener("change",e=>{const f=e.target.files[0];e.target.value="";if(f)useFile(f)});
 // Made-up as-built surveys for trying the upload and AI steps (samples/, drawn by tools/make_samples.py).
 document.querySelectorAll("[data-sample]").forEach(b=>b.addEventListener("click",async()=>{
   try{const r=await fetch(b.dataset.sample);if(!r.ok)throw new Error("HTTP "+r.status);
-    await useFile(new File([await r.blob()],b.dataset.sample.split("/").pop(),{type:"image/jpeg"}))}
+    await useFile(new File([await r.blob()],b.dataset.sample.split("/").pop(),{type:"image/jpeg"}),true)}
   catch(e){console.error(e);$("tools").open=true;$("guide").innerHTML="<b>That sample could not be loaded.</b> Try again in a minute."}}));
 
 /* ---------- AI reads the survey ---------- */
@@ -313,19 +313,30 @@ function applyAI(o){
   // surveys print the district in many ways ("R-6", "R6", "ZONING: R-6 (example)"): take the district out of it
   const z=typeof o.zoning==="string"?normZone((o.zoning.toUpperCase().match(/[A-Z]+-?\d+[A-Z]?/)||[""])[0]):"";
   if(DIST[z])setDistrict(z);
+  // kept so the page can say what the person changed before accepting it (reportChecked)
+  S.ai={lot:lot.slice(),bldgs:bldgs.slice(),nb:nb.map(q=>q.pts),types:S.types.slice(),ftPerPx:S.ftPerPx,dist:$("dist").value};
   const c=cen(lot);S.adu.x=c.x;S.adu.y=c.y;S.mapDirty=true;
   if(!scaled){setMode("scale");$("guide").innerHTML="<b>The AI traced the lot but could not read a length.</b> Click the two ends of a line with a printed length, then type it. Then check the tracing and press \"This tracing looks right\"."}
   else{setMode("place");
     $("guide").innerHTML="<b>The AI made a first tracing. Check it before anything else.</b> Compare the blue lot lines, the numbered buildings and the orange areas with your survey. Fix anything that is off with steps 1 to 4, then press \"This tracing looks right\"."}
   if(tr.multi)$("guide").appendChild(document.createTextNode(" The AI found more than one street beside this lot, so each street side is checked as a front."));
   if(o.notes)$("guide").appendChild(document.createTextNode(" Note from the AI: "+String(o.notes).slice(0,300)))}
-$("aiOk").addEventListener("click",()=>{S.unconfirmed=false;$("aiOk").hidden=true;S.mapDirty=true;setMode("place");placeBest();cv.focus({preventScroll:true})});
+// The pilot's accuracy measure: how often people correct an AI tracing. When one is accepted the
+// page tells the reader which parts were changed first, yes or no for each, and how far the
+// furthest lot corner moved in whole feet (geometry.js traceDiff). No image, no coordinates and no
+// address are sent. It is sent as plain text so the browser makes one request, not two, and
+// a failure is ignored: the person's result never waits on it.
+function reportChecked(){const a=S.ai;S.ai=null;if(!a||!SURVEY_READER.checked)return;
+  try{const d=traceDiff(a,{lot:S.lotClosed?S.lot:[],bldgs:S.bldgs,nb:S.nb.map(q=>q.pts),types:S.types,ftPerPx:S.ftPerPx,dist:$("dist").value});
+    fetch(SURVEY_READER.checked,{method:"POST",headers:{"content-type":"text/plain"},body:JSON.stringify({...d,sample:!!S.sample}),keepalive:true}).catch(()=>{})}
+  catch(e){console.error(e)}}
+$("aiOk").addEventListener("click",()=>{reportChecked();S.unconfirmed=false;$("aiOk").hidden=true;S.mapDirty=true;setMode("place");placeBest();cv.focus({preventScroll:true})});
 $("ai").addEventListener("click",async()=>{if(!aiOn()||!S.img||!S.uploaded)return;const btn=$("ai"),img=S.img;btn.disabled=true;btn.textContent="Reading the survey… this can take half a minute";
   const by="trace the survey by hand with steps 1 to 4.";
   try{let blob=null;for(const q of [0.9,0.75,0.6]){blob=await new Promise(r=>S.img.toBlob(r,"image/jpeg",q));if(blob&&blob.size<=AI_MAX_BYTES)break}
     if(!blob||blob.size>AI_MAX_BYTES)throw {code:"too_large"};
     const b64=await new Promise((res,rej)=>{const fr=new FileReader();fr.onload=()=>res(String(fr.result).split(",")[1]);fr.onerror=rej;fr.readAsDataURL(blob)});
-    const r=await fetch(SURVEY_READER.url,{method:"POST",headers:{"content-type":"application/json","x-api-key":SURVEY_READER.key},body:JSON.stringify({image:b64})});
+    const r=await fetch(SURVEY_READER.url,{method:"POST",headers:{"content-type":"application/json","x-api-key":SURVEY_READER.key},body:JSON.stringify(S.sample?{image:b64,sample:true}:{image:b64})});
     const d=await r.json().catch(()=>({}));
     // errors raised by the gateway itself carry no code of ours: over quota or throttled is 429, timed out is 504
     if(!r.ok)throw {code:d.error||(r.status===429?"limit":r.status===504?"slow":"failed")};

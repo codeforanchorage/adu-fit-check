@@ -1,6 +1,6 @@
 # The survey reader for ADU Fit Check (Phase 4): one Lambda behind a REST API.
 # Laid out like the Code for Anchorage MCP fleet (Terraform, own state, us-west-2,
-# reserved concurrency, stage throttle, four alarms, 14 and 30 day logs), with
+# reserved concurrency, stage throttle, four alarms, 30 day access logs), with
 # three differences, each for a reason:
 #   - Tag Project = adu-fit-check, not mcp-server. This is not an MCP server, and
 #     the fleet's dashboard, probe and 4xx alarms key on that tag.
@@ -84,8 +84,10 @@ resource "aws_iam_role_policy" "read_key" {
 }
 
 resource "aws_cloudwatch_log_group" "lambda" {
-  name              = "/aws/lambda/${var.lambda_name}"
-  retention_in_days = 14
+  name = "/aws/lambda/${var.lambda_name}"
+  # 90 days, not the fleet's 14: these lines are the pilot's record of how often people
+  # correct an AI tracing (lambda/correction_report.py). They hold no image, tracing or address.
+  retention_in_days = 90
 }
 
 resource "aws_lambda_function" "reader" {
@@ -166,6 +168,34 @@ resource "aws_api_gateway_integration" "options" {
   uri                     = aws_lambda_function.reader.invoke_arn
 }
 
+# The page reports here when a person accepts an AI tracing: which parts they changed, yes
+# or no for each. No model call, so no key and no daily quota: with the key, each report
+# would use up one of the day's survey reads. The stage throttle and the Lambda's check of
+# the calling site still apply. The page sends it as plain text, which needs no preflight,
+# so there is no OPTIONS method.
+resource "aws_api_gateway_resource" "checked" {
+  rest_api_id = aws_api_gateway_rest_api.api.id
+  parent_id   = aws_api_gateway_rest_api.api.root_resource_id
+  path_part   = "tracing-checked"
+}
+
+resource "aws_api_gateway_method" "checked_post" {
+  rest_api_id      = aws_api_gateway_rest_api.api.id
+  resource_id      = aws_api_gateway_resource.checked.id
+  http_method      = "POST"
+  authorization    = "NONE"
+  api_key_required = false
+}
+
+resource "aws_api_gateway_integration" "checked_post" {
+  rest_api_id             = aws_api_gateway_rest_api.api.id
+  resource_id             = aws_api_gateway_resource.checked.id
+  http_method             = aws_api_gateway_method.checked_post.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = aws_lambda_function.reader.invoke_arn
+}
+
 resource "aws_lambda_permission" "apigw" {
   statement_id  = "AllowAPIGatewayInvoke"
   action        = "lambda:InvokeFunction"
@@ -210,6 +240,9 @@ resource "aws_api_gateway_deployment" "this" {
       aws_api_gateway_method.options.id,
       aws_api_gateway_integration.post.id,
       aws_api_gateway_integration.options.id,
+      aws_api_gateway_resource.checked.id,
+      aws_api_gateway_method.checked_post.id,
+      aws_api_gateway_integration.checked_post.id,
       aws_api_gateway_gateway_response.cors_4xx.response_parameters,
       aws_api_gateway_gateway_response.cors_5xx.response_parameters,
     ]))

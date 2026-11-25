@@ -149,5 +149,64 @@ class Logs(unittest.TestCase):
         self.assertNotIn("test-key", line)   # no key
 
 
+REPORT = {"lot": True, "lot_move_ft": 4, "buildings": False, "no_build": False, "scale": True, "scale_read": False,
+          "streets": False, "district": False, "sample": False}
+
+
+def checked_event(report=REPORT, origin=ORIGIN, body=None):
+    ev = event(origin=origin, body=json.dumps(report) if body is None else body)
+    ev["resource"] = "/tracing-checked"
+    return ev
+
+
+class Checked(unittest.TestCase):
+    def test_a_report_is_logged_and_the_model_is_not_called(self):
+        with self.assertLogs(level="INFO") as cm:
+            r, body, client = call(checked_event())
+        self.assertEqual((r["statusCode"], body), (200, {"ok": True}))
+        self.assertEqual(client.calls, [])
+        line = json.loads(cm.output[0].split(":", 2)[2])
+        self.assertEqual(line, {"event": "checked", "ok": True, **REPORT, "changed": True})
+
+    def test_setting_a_scale_the_reader_did_not_find_is_not_a_correction(self):
+        with self.assertLogs(level="INFO") as cm:
+            call(checked_event({**REPORT, "lot": False, "lot_move_ft": 0}))
+        self.assertIn('"changed": false', cm.output[0])
+        with self.assertLogs(level="INFO") as cm:
+            call(checked_event({**REPORT, "lot": False, "lot_move_ft": 0, "scale_read": True}))
+        self.assertIn('"changed": true', cm.output[0])
+
+    def test_anything_else_is_refused_and_never_logged(self):
+        bad = [
+            {**REPORT, "address": "1 SECRET ST"},            # an extra field
+            {k: v for k, v in REPORT.items() if k != "lot"},  # a missing field
+            {**REPORT, "lot": "yes"}, {**REPORT, "lot": 1},
+            {**REPORT, "lot_move_ft": 12.5}, {**REPORT, "lot_move_ft": -1}, {**REPORT, "lot_move_ft": 1000}, {**REPORT, "lot_move_ft": True},
+            [1, 2, 3],
+        ]
+        for report in bad:
+            with self.assertLogs(level="INFO") as cm:
+                r, body, client = call(checked_event(report))
+            self.assertEqual((r["statusCode"], body["error"]), (400, "bad_request"), report)
+            self.assertNotIn("SECRET", " ".join(cm.output))
+            self.assertEqual(client.calls, [])
+        r, body, _ = call(checked_event(body="not json"))
+        self.assertEqual(r["statusCode"], 400)
+        r, body, _ = call(checked_event(body=json.dumps(REPORT) + " " * 400))
+        self.assertEqual((r["statusCode"], body["error"]), (413, "too_large"))
+
+    def test_other_sites(self):
+        r, body, _ = call(checked_event(origin="https://evil.example"))
+        self.assertEqual((r["statusCode"], body["error"]), (403, "origin"))
+
+    def test_a_read_says_whether_it_was_a_sample(self):
+        with self.assertLogs(level="INFO") as cm:
+            call(event(body=json.dumps({"image": base64.b64encode(JPEG).decode(), "sample": True})))
+        self.assertIn('"sample": true', cm.output[0])
+        with self.assertLogs(level="INFO") as cm:
+            call(event())
+        self.assertIn('"sample": false', cm.output[0])
+
+
 if __name__ == "__main__":
     unittest.main()

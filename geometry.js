@@ -80,3 +80,16 @@ export function classifyEdges(lot,parcels,lines,opt){
 }
 
 export const f1=n=>(Math.round(n*10)/10).toFixed(1);
+
+// What a person changed in an AI tracing before accepting it. a is the tracing the AI gave,
+// b the one accepted: {lot, bldgs, nb (arrays of points), types, ftPerPx, dist}. Only yes or no
+// answers and one rounded distance come out; no coordinates leave the page (ui.js reportChecked).
+//   scale_read   the AI had found a scale, so a changed scale is a correction and not a first setting
+//   lot_move_ft  furthest any AI lot corner is from the nearest accepted corner, in whole feet;
+//                null when the number of corners changed or there is no scale
+// Redrawing the lot resets the street sides, so streets is often true whenever lot is.
+export function traceDiff(a,b){
+  const key=p=>p.map(q=>Math.round(q.x)+","+Math.round(q.y)).join(" "),same=(x,y)=>x.length===y.length&&x.every((p,i)=>key(p)===key(y[i]));
+  const move=a.lot.length&&a.lot.length===b.lot.length&&b.ftPerPx>0?Math.min(999,Math.round(Math.max(...a.lot.map(p=>Math.min(...b.lot.map(q=>Math.hypot(p.x-q.x,p.y-q.y)))))*b.ftPerPx)):null;
+  return {lot:key(a.lot)!==key(b.lot),lot_move_ft:move,buildings:!same(a.bldgs,b.bldgs),no_build:!same(a.nb,b.nb),
+    scale:a.ftPerPx!==b.ftPerPx,scale_read:a.ftPerPx>0,streets:a.types.join()!==b.types.join(),district:a.dist!==b.dist}}

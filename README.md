@@ -72,7 +72,8 @@ python build_deploy.py --verify   # compares the live files with the build
 
 - **Spend is limited four ways:** an API Gateway usage plan with a daily quota (the page's key attaches it), reserved concurrency of 2, a throttle of one request a second, and a spend limit set on the Anthropic workspace that owns the model key. The quota is best-effort and the page's key is public, so one person could use up a day's quota for everyone; the concurrency cap and the Anthropic spend limit are the firm ceilings. A per-address limit would need a firewall rule in front of the API.
 - **The model key** is an encrypted SSM parameter, `/adu-fit-check/anthropic-api-key`, created by hand. It is not in this repository, the Lambda package or the Terraform state.
-- **Nothing is stored.** The image is held for one request. The log line has timing, token counts and how many shapes came back, never the image or the tracing.
+- **No image or tracing is stored.** The image is held for one request. The log line has timing, token counts and how many shapes came back, never the image or the tracing.
+- **How often people correct the tracing is logged.** When a person presses "This tracing looks right", the page posts to a second route, `/tracing-checked`, which parts they changed first (lot lines, buildings, no-build areas, scale, street sides, zoning district: yes or no for each) and how far the furthest lot corner moved, in whole feet. No image, coordinates or address. This is the accuracy measure for the pilot. The route makes no model call and needs no key, so it does not use up the daily quota; because the report comes from the page, anyone could send false ones. Lambda logs are kept 90 days. `python lambda/correction_report.py` prints the figures.
 - **To switch it off:** `aws lambda put-function-concurrency --function-name adu-fit-check-survey-prod --reserved-concurrent-executions 0`, or empty `url` in `config.js`.
 
 ```
@@ -111,7 +112,7 @@ The plans are in `plans.json`, read from www.muni.org/ADU on 2026-11-24. The Mun
 - The projection (NAD83 Alaska State Plane Zone 4, feet) has not yet been confirmed with MOA GIS.
 - The aerial photo is the 2024 one. A 2026 photo service (`Photo_2026_Temp`) answers without a login but had no public catalog item on 2026-11-24, so it is left out until MOA GIS confirms it is meant to be public. The line to add it back is in a comment above `AERIALS` in `data.js`.
 - Aerial photos are for orientation. Mapped lot lines can sit a few feet off the photo.
-- "Read survey with AI" appears only when `config.js` names a survey reader and a survey has been uploaded. Its accuracy has not been measured yet: that needs the 20 redacted as-builts from Development Services.
+- "Read survey with AI" appears only when `config.js` names a survey reader and a survey has been uploaded. Its accuracy has not been measured yet: that needs the 20 redacted as-builts from Development Services. Until then, the only measure is how often people correct a tracing before accepting it (`lambda/correction_report.py`).
 
 ## Licence
 

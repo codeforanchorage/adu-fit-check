@@ -1,5 +1,5 @@
 import {describe,it,expect} from "vitest";
-import {area,inside,ptSeg,segX,segSeg,polySeg,polyPoly,crosses,closest,cen,rectPoly,openRing,clean,classifyEdges} from "../geometry.js";
+import {area,inside,ptSeg,segX,segSeg,polySeg,polyPoly,crosses,closest,cen,rectPoly,openRing,clean,classifyEdges,traceDiff} from "../geometry.js";
 
 const P=(x,y)=>({x,y});
 const box=(x0,y0,x1,y1)=>[P(x0,y0),P(x1,y0),P(x1,y1),P(x0,y1)];
@@ -122,5 +122,34 @@ describe("clean on a curved lot line (a cul-de-sac)",()=>{
   it("still makes one edge of a straight line drawn with many points",()=>{
     const line=[];for(let x=0;x<=60;x+=0.5)line.push(P(x,0));
     expect(clean(line.concat([P(60,125),P(0,125)]))).toHaveLength(4);
+  });
+});
+
+describe("traceDiff: what a person changed in an AI tracing",()=>{
+  const ai=()=>({lot:box(0,0,360,750),bldgs:[box(60,400,300,600)],nb:[box(0,0,360,60)],types:["front","side","rear","side"],ftPerPx:1/6,dist:"R-1"});
+  it("nothing changed",()=>{
+    expect(traceDiff(ai(),ai())).toEqual({lot:false,lot_move_ft:0,buildings:false,no_build:false,scale:false,scale_read:true,streets:false,district:false});
+  });
+  it("a lot corner moved 30 px at 6 px a foot is 5 ft",()=>{
+    const b=ai();b.lot=[P(0,0),P(360,0),P(390,750),P(0,750)];
+    const d=traceDiff(ai(),b);expect(d.lot).toBe(true);expect(d.lot_move_ft).toBe(5);expect(d.buildings).toBe(false);
+  });
+  it("a lot redrawn from another corner, the same shape, has moved 0 ft",()=>{
+    const b=ai();b.lot=[...b.lot.slice(2),...b.lot.slice(0,2)];expect(traceDiff(ai(),b).lot_move_ft).toBe(0);
+  });
+  it("no distance when the number of corners changed or there is no scale",()=>{
+    const b=ai();b.lot=[...b.lot,P(-20,300)];expect(traceDiff(ai(),b).lot_move_ft).toBe(null);
+    const c=ai();c.ftPerPx=null;expect(traceDiff(ai(),c).lot_move_ft).toBe(null);
+    const e=ai();e.lot=[];expect(traceDiff(ai(),e)).toMatchObject({lot:true,lot_move_ft:null});
+  });
+  it("each other part on its own",()=>{
+    let b=ai();b.bldgs.push(box(10,10,50,50));expect(traceDiff(ai(),b)).toMatchObject({lot:false,buildings:true,no_build:false});
+    b=ai();b.nb=[];expect(traceDiff(ai(),b)).toMatchObject({buildings:false,no_build:true});
+    b=ai();b.types[1]="front";expect(traceDiff(ai(),b)).toMatchObject({streets:true,district:false});
+    b=ai();b.dist="Custom";expect(traceDiff(ai(),b)).toMatchObject({streets:false,district:true});
+    b=ai();b.ftPerPx=1/5;expect(traceDiff(ai(),b)).toMatchObject({scale:true,scale_read:true});
+  });
+  it("a scale the AI could not read: setting it is flagged as not read",()=>{
+    const a=ai();a.ftPerPx=null;expect(traceDiff(a,ai())).toMatchObject({scale:true,scale_read:false});
   });
 });

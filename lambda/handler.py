@@ -2,10 +2,15 @@
 
 Phase 4 of ADU_FIT_CHECK_TASK.md. Runs as an AWS Lambda behind API Gateway.
 
+It also takes one small report from the page when a person accepts an AI tracing: which
+parts they changed first (yes or no for each) and how far the furthest lot corner moved,
+in whole feet. That is the accuracy measure for the pilot. See checked() below.
+
 What it does not do, on purpose:
   - It never stores the image. It is held in memory for one request and dropped.
   - It never logs the image, the request body, an address or the tracing itself.
     The log line holds timing, token counts and how many shapes came back.
+    The report of a checked tracing holds no coordinates either.
   - It never returns the model API key or lets the page choose the model or the prompt.
 
 The tracing is a starting point for the homeowner to check, not a result.
@@ -205,6 +210,35 @@ def read_survey(raw, media_type):
     return out, facts
 
 
+# The report the page sends when a person presses "This tracing looks right" (ui.js
+# reportChecked). Nothing but these fields is accepted, and nothing but these is logged.
+CHECKED_FLAGS = ("lot", "buildings", "no_build", "scale", "scale_read", "streets", "district", "sample")
+CHECKED_MAX_CHARS = 400
+
+
+def checked(body):
+    """Validate one report of a checked tracing. Returns the facts for the log line.
+
+    lot, buildings, no_build, scale, streets, district: did the person change that part
+    scale_read: had the reader found a scale (if not, setting one is not a correction)
+    sample: was it one of the page's made-up surveys
+    lot_move_ft: furthest a lot corner moved, in whole feet; null when the corner count changed
+    """
+    if len(body) > CHECKED_MAX_CHARS:
+        raise Problem(413, "too_large", "That report is too large.")
+    try:
+        d = json.loads(body)
+    except ValueError as e:
+        raise Problem(400, "bad_request", "The request could not be read.") from e
+    if not isinstance(d, dict) or set(d) != set(CHECKED_FLAGS) | {"lot_move_ft"}:
+        raise Problem(400, "bad_request", "The request could not be read.")
+    move = d["lot_move_ft"]
+    if any(type(d[k]) is not bool for k in CHECKED_FLAGS) or not (move is None or (type(move) is int and 0 <= move <= 999)):
+        raise Problem(400, "bad_request", "The request could not be read.")
+    changed = any(d[k] for k in ("lot", "buildings", "no_build", "streets", "district")) or (d["scale"] and d["scale_read"])
+    return {**{k: d[k] for k in CHECKED_FLAGS}, "lot_move_ft": move, "changed": changed}
+
+
 def reply(status, body, origin):
     headers = {"Content-Type": "application/json", "Cache-Control": "no-store", "Vary": "Origin"}
     if origin in ALLOWED_ORIGINS:
@@ -223,6 +257,7 @@ def lambda_handler(event, context):
     method = event.get("httpMethod", "")
     if method == "OPTIONS":
         return reply(204, {}, origin)
+    event_name = "checked" if event.get("resource") == "/tracing-checked" else "read"
     try:
         if method != "POST":
             raise Problem(405, "method", "Use POST.")
@@ -232,16 +267,21 @@ def lambda_handler(event, context):
         body = event.get("body") or ""
         if event.get("isBase64Encoded"):
             body = base64.b64decode(body).decode("utf-8", "replace")
+        if event_name == "checked":
+            log.info(json.dumps({"event": "checked", "ok": True, **checked(body)}))
+            return reply(200, {"ok": True}, origin)
         try:
-            image = json.loads(body).get("image")
+            req = json.loads(body)
+            image = req.get("image")
         except (ValueError, AttributeError) as e:
             raise Problem(400, "bad_request", "The request could not be read.") from e
         raw, media_type = check_image(image)
         out, facts = read_survey(raw, media_type)
-        log.info(json.dumps({"event": "read", "ok": True, "image_bytes": len(raw), **facts}))
+        # sample: one of the page's made-up surveys, so the pilot's figures can leave them out
+        log.info(json.dumps({"event": "read", "ok": True, "sample": req.get("sample") is True, "image_bytes": len(raw), **facts}))
         return reply(200, out, origin)
     except Problem as p:
-        log.info(json.dumps({"event": "read", "ok": False, "status": p.status, "code": p.code}))
+        log.info(json.dumps({"event": event_name, "ok": False, "status": p.status, "code": p.code}))
         return reply(p.status, {"error": p.code, "message": p.message}, origin)
     except Exception as e:  # noqa: BLE001
         # A bug here must still answer in the page's own format, with the cross-origin headers,
