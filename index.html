@@ -180,6 +180,7 @@ details.tools .bar{margin-top:6px}
         <button id="undo" type="button">Undo</button>
         <button id="clear" type="button">Clear all of these</button>
       </div>
+      <div class="inline" id="lineTypes" role="group" aria-label="What each lot line is" style="gap:6px 14px"></div>
       <div class="inline" id="viewBox" role="group" aria-label="How to look at the lot">
         <button type="button" id="viewDrawing" aria-pressed="true">Drawing</button>
         <button type="button" id="viewAerial" aria-pressed="false">Aerial photo</button>
@@ -195,7 +196,8 @@ details.tools .bar{margin-top:6px}
         <span id="threeMsg" class="small" style="margin:0;flex-basis:100%" aria-live="polite"></span>
       </div>
       <div class="cvwrap">
-        <canvas id="cv" tabindex="0" role="application" aria-label="Drawing of the lot. Drag the ADU, or use the arrow keys to move it one foot. The Does it fit section gives the same information in words."></canvas>
+        <canvas id="cv" tabindex="0" role="application" aria-label="Drawing of the lot. In step 5, drag the ADU or use the arrow keys to move it one foot. In steps 1 to 4, the arrow keys move a crosshair, Enter places a point and Backspace removes the last one. The Does it fit section gives the same information in words."></canvas>
+        <span id="kbdMsg" class="vh" aria-live="polite"></span>
         <div id="three" hidden tabindex="0" role="group" aria-label="3D view of the lot, as blocks. Drag or use the arrow keys to turn it, and plus and minus to zoom. The Does it fit section and the sentence under Sun and shadows give the same information in words."></div>
       </div>
       <div class="legend">

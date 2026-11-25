@@ -32,6 +32,10 @@ python -m pip install --quiet --target "$BUILD" --requirement "$ROOT/lambda/requ
   --platform manylinux2014_x86_64 --implementation cp --python-version 3.14 --only-binary=:all: --upgrade
 cp "$ROOT/lambda/handler.py" "$BUILD/"
 find "$BUILD" -name "__pycache__" -type d -prune -exec rm -rf {} +
+# pip writes Windows launchers into bin/ that differ on every build and are no use in Lambda.
+# Without them, and the RECORD files that list their checksums, the same code gives the same zip.
+rm -rf "$BUILD/bin"
+find "$BUILD" -path "*.dist-info/RECORD" -delete
 rm -f "$ZIP"
 # sorted names and fixed dates, so the same code gives the same zip and Terraform sees no change
 python - "$BUILD" "$ZIP" <<'PY'

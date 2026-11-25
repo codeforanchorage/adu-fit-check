@@ -5,7 +5,7 @@
 //
 // Results are screening only. Zoning staff make the determination.
 
-import {area,inside,polySeg,polyPoly,crosses,closest,f1} from "./geometry.js";
+import {area,inside,polySeg,polyPoly,crosses,closest,rectPoly,f1} from "./geometry.js";
 
 export const TYPES=["front","side","rear","alley"];
 export const TNAME={front:"Front",side:"Side",rear:"Rear",alley:"Alley"};
@@ -141,6 +141,50 @@ export function check(scene,poly,R,quick){
 export function margin(scene,poly,R){const S=scene,f=S.ftPerPx;let m=Infinity;
   for(let i=0;i<S.lot.length;i++)m=Math.min(m,polySeg(poly,S.lot[i],S.lot[(i+1)%S.lot.length])*f-reqFor(S.types[i],R));
   S.bldgs.forEach(b=>m=Math.min(m,polyPoly(poly,b)*f-R.sep));S.nb.forEach(z=>m=Math.min(m,polyPoly(poly,z.pts)*f));return m}
+
+// ---------- where an ADU fits ----------
+// Used by the page (ui.js) and by the survey reader's evaluation (tools/verdict.mjs), so both
+// reach a "could fit" or "no room found" the same way.
+
+// Points to try the ADU's centre at: a grid over the lot, at least minFt feet apart.
+export function gridPts(scene,minFt,about){const S=scene,xs=S.lot.map(p=>p.x),ys=S.lot.map(p=>p.y),x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys);
+  const stepFt=Math.max(minFt||2,Math.sqrt(area(S.lot)*S.ftPerPx*S.ftPerPx/(about||5000))),st=stepFt/S.ftPerPx,pts=[];
+  for(let y=y0+st/2;y<y1;y+=st)for(let x=x0+st/2;x<x1;x+=st)if(inside({x,y},S.lot))pts.push({x,y});return {pts,st}}
+
+// The two checks that do not depend on where the ADU sits: lot coverage and floor area.
+export function sizeOk(scene,R){const a=scene.adu,g=check(scene,rectPoly(a,a.x,a.y,scene.ftPerPx),R,false);return !g.rows.slice(-2).some(r=>!r.ok)}
+
+// Best position for scene.adu: the spot with the most room to spare, as {m (ft to spare), x, y, rot},
+// or null when no spot was found. scene is not changed.
+// It first tries a coarse grid at the current turn and a quarter turn from it. If nothing
+// fits it looks harder before saying so: a 1 ft grid, and the ADU turned to line up with the
+// longest lot line. A spot with less than about a foot to spare can still be missed, which is
+// why the page says "No room found" and not "does not fit".
+export function findSpot(scene,R){const adu={...scene.adu},S={...scene,adu};if(!sizeOk(S,R))return null;const keep=adu.rot,n=S.lot.length;let best=null;
+  const scan=(g,rots)=>{for(const rot of rots){adu.rot=rot;for(const p of g.pts){const poly=rectPoly(adu,p.x,p.y,S.ftPerPx);if(!check(S,poly,R,true).ok)continue;const m=margin(S,poly,R);if(!best||m>best.m+(rot===keep?0:0.5))best={m,x:p.x,y:p.y,rot}}}};
+  const quarter=[keep,(keep+90)%180];scan(gridPts(S),quarter);
+  if(!best){let li=0,ll=0;for(let i=0;i<n;i++){const a=S.lot[i],b=S.lot[(i+1)%n],l=Math.hypot(b.x-a.x,b.y-a.y);if(l>ll){ll=l;li=i}}
+    const a=S.lot[li],b=S.lot[(li+1)%n],e=((Math.round(Math.atan2(b.y-a.y,b.x-a.x)*180/Math.PI/5)*5)%180+180)%180;
+    scan(gridPts(S,1,8000),[...new Set(quarter.concat([e,(e+90)%180]))])}
+  return best}
+
+// Turn the survey reader's answer (lambda/handler.py, points on a 0 to 1000 grid) into the
+// page's own shapes for an image iw by ih pixels. Throws when there is no usable lot, before
+// anything is changed. Returns {lot, bldgs, nb:[{pts,label}], types, multi, ftPerPx (null when
+// no length could be read), zone ("" when the district is not one this page has rules for)}.
+export function sceneFromTrace(o,iw,ih){
+  const P=q=>({x:Math.max(0,Math.min(1000,+q[0]))*iw/1000,y:Math.max(0,Math.min(1000,+q[1]))*ih/1000}),poly=a=>Array.isArray(a)&&a.length>=3&&a.every(q=>Array.isArray(q)&&isFinite(q[0])&&isFinite(q[1]))?a.map(P):null;
+  const shapes=a=>(Array.isArray(a)?a:[]).filter(x=>x&&typeof x==="object");
+  if(!o||typeof o!=="object")throw new Error("no answer");
+  const lot=poly(o.lot);if(!lot)throw new Error("no lot");
+  const bldgs=shapes(o.buildings).map(b=>poly(b.pts)).filter(Boolean),nb=shapes(o.no_build).map(z=>({pts:poly(z.pts),label:String(z.label||"No-build area").slice(0,40)})).filter(z=>z.pts);
+  // Every line on a street is a front lot line, so a corner lot gets a front setback on both streets:
+  // the same labelling an address lookup gets (typesFromEdges).
+  const tr=typesFromTrace(lot,o.street_edges,o.alley_edges,o.front_edge);
+  const sc=o.scale;let ftPerPx=null;if(sc&&Array.isArray(sc.p1)&&Array.isArray(sc.p2)&&sc.feet>0){const a=P(sc.p1),b=P(sc.p2),d=Math.hypot(a.x-b.x,a.y-b.y);if(d>5)ftPerPx=sc.feet/d}
+  // surveys print the district in many ways ("R-6", "R6", "ZONING: R-6 (example)"): take the district out of it
+  const z=typeof o.zoning==="string"?normZone((o.zoning.toUpperCase().match(/[A-Z]+-?\d+[A-Z]?/)||[""])[0]):"";
+  return {lot,bldgs,nb,types:tr.types,multi:tr.multi,ftPerPx,zone:DIST[z]?z:""}}
 
 // ---------- other reviews this lot may need ----------
 // Source for every threshold below: Municipality of Anchorage, Pre-Approved ADU Plans permit

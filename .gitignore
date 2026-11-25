@@ -7,3 +7,6 @@ terraform/aws/survey-reader.zip
 terraform/aws/tfplan
 terraform/aws/.terraform/
 __pycache__/
+
+# the survey reader's replies, kept by lambda/score_samples.py for --replay
+.survey-replies/

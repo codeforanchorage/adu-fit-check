@@ -38,6 +38,7 @@ It never requests or shows owner names or mailing addresses.
 | `terraform/aws/` | The AWS resources for the survey reader |
 | `plans.json` | The pre-approved ADU plans: name, designer, footprint, floor area, and where each number comes from |
 | `tests/` | Vitest unit tests, and `live-check.mjs` for checking an address from the command line |
+| `tools/` | `make_samples.py` draws the made-up surveys; `verdict.mjs` gives the page's fit verdict for a tracing |
 | `build_deploy.py` | Builds the upload folder for DreamHost |
 | `ADU_FIT_CHECK_TASK.md` | The work order, by phase |
 
@@ -51,8 +52,20 @@ The page uses ES modules, so it has to be served rather than opened from disk.
 npm install        # only needed for the tests
 npm start          # http://127.0.0.1:8000/
 npm test
-node tests/live-check.mjs "1400 W 23RD AVE"
+node tests/live-check.mjs "132 E MANOR AVE"
 ```
+
+`npm test` covers the geometry, the zoning rules and plan check, the sun, the map data, and the page itself. `tests/ui.test.js` runs `index.html` and `ui.js` in a simulated browser (happy-dom) with a canvas that draws nothing and no network: it checks the words, the plan check table, tracing by keyboard, and what the page sends to the survey reader. `tests/view3d.test.js` runs `view3d.js` against a stand-in for three.js (`tests/fakes/`). Neither can see the picture, so look at the drawing and the 3D view in a browser after changing them.
+
+## Using it without a mouse
+
+Every step works from the keyboard. With the drawing in focus:
+
+- **Steps 1 to 4 (scale, lot lines, buildings, no-build areas):** the arrow keys move a crosshair, 10 screen pixels a press or 1 with Shift held. Enter or Space places a point, as a click does. Backspace takes the last point back. Home jumps to the first corner of the shape being drawn, so Enter there closes it; "Finish shape" closes it too.
+- **Lot line labels:** in step 2, once the lot is traced, a list under the tools has a picker for each line (Front, Side, Rear, Alley).
+- **Step 5:** the arrow keys move the ADU one foot.
+
+What each key press did is announced for screen readers. Tracing still needs sight of the survey image; the "Does it fit" section gives every result in words.
 
 ## Deploy
 
@@ -84,7 +97,7 @@ scripts/deploy_survey.sh --apply                       # apply the plan just sho
 
 After the first deploy, put the two Terraform outputs into `config.js` and deploy the page.
 
-Three made-up as-built surveys are in `samples/`, drawn by `tools/make_samples.py`, with what each one really shows in `samples/answers.json`. The page offers them under "Have a survey of your lot?" so people can try the upload and AI steps. `python lambda/score_samples.py` reads each through the live reader and reports how far each traced corner is from the truth (three paid calls).
+Three made-up as-built surveys are in `samples/`, drawn by `tools/make_samples.py`, with what each one really shows in `samples/answers.json`. The page offers them under "Have a survey of your lot?" so people can try the upload and AI steps. `python lambda/score_samples.py` reads each through the live reader and reports how far each traced corner is from the truth, in feet, and whether the fit verdict changes: for each catalog plan, whether the page would say "Could fit" on the true tracing and on the reader's (three paid calls; `--replay` scores the saved replies again with none). The verdicts come from the page's own code through `tools/verdict.mjs`. To evaluate real as-builts, keep them outside this repository with an `answers.json` in the same format and pass its path; the format is described at the top of the script.
 
 ## Who the page is written for
 
@@ -102,7 +115,7 @@ The plans are in `plans.json`, read from www.muni.org/ADU on 2026-11-24. The Mun
 
 ## Known limits
 
-- The 3D view is a block model with the same limits as the shadows, and it cannot be unit-tested here: check it in a browser after changing `view3d.js`.
+- The 3D view is a block model with the same limits as the shadows. Its unit tests check what is built and where, not the picture: check it in a browser after changing `view3d.js`.
 - Shadows treat the ground as flat and every building as a flat-topped block, and show no trees or fences. Building heights come from the `ELEVATION` field of the Municipality's building layer, which the layer does not document; it is read as height above ground in feet, probably to the highest point of the roof. About one building in five has no value and casts no shadow. ADU heights are guesses (`heightGuess` in `plans.json`) that the person can change.
 - Plan footprints are estimates (see above), so distances for a catalog plan may be off by a foot or two.
 - ADU height (25 ft, or 30 ft over a garage, AMC 21.05.070D.1) is not checked: no plan height is published.
@@ -112,7 +125,7 @@ The plans are in `plans.json`, read from www.muni.org/ADU on 2026-11-24. The Mun
 - The projection (NAD83 Alaska State Plane Zone 4, feet) has not yet been confirmed with MOA GIS.
 - The aerial photo is the 2024 one. A 2026 photo service (`Photo_2026_Temp`) answers without a login but had no public catalog item on 2026-11-24, so it is left out until MOA GIS confirms it is meant to be public. The line to add it back is in a comment above `AERIALS` in `data.js`.
 - Aerial photos are for orientation. Mapped lot lines can sit a few feet off the photo.
-- "Read survey with AI" appears only when `config.js` names a survey reader and a survey has been uploaded. Its accuracy has not been measured yet: that needs the 20 redacted as-builts from Development Services. Until then, the only measure is how often people correct a tracing before accepting it (`lambda/correction_report.py`).
+- "Read survey with AI" appears only when `config.js` names a survey reader and a survey has been uploaded. Its accuracy on real surveys has not been measured yet: that needs the 20 redacted as-builts from Development Services (`lambda/score_samples.py` is ready for them). On the three made-up samples, traced corners were within about a third of a foot and no fit verdict changed, but those are clean drawings. Until then, the only measure is how often people correct a tracing before accepting it (`lambda/correction_report.py`).
 
 ## Licence
 

@@ -1,6 +1,6 @@
 // Live check against the Municipality's services, using the same code the page runs.
 // Not part of `npm test` (it needs the network). Usage:
-//   node tests/live-check.mjs "1400 W 23RD AVE" ["another address" ...]
+//   node tests/live-check.mjs "132 E MANOR AVE" ["another address" ...]
 // Prints what the page would draw and the plan-check table for each catalog plan (plans.json) at its best spot.
 import {readFileSync} from "node:fs";
 import {findParcels,loadSite,loadFlags,sheetBox,aerialUrl,AERIALS} from "../data.js";

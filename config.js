@@ -18,7 +18,8 @@
 //   terraform -chdir=terraform/aws output -raw tracing_checked_url
 // An address offered as "Try an example" under the address box, for people who want to see
 // the page work before typing their own. Any Anchorage Bowl address in a residential district
-// works. Leave it empty to hide the button.
-export const EXAMPLE_ADDRESS="1400 W 23RD AVE";
+// works. This one is a house owned by the Municipality (Real Estate Services), chosen so the
+// example is not a private home. Leave it empty to hide the button.
+export const EXAMPLE_ADDRESS="132 E MANOR AVE";
 
 export const SURVEY_READER={url:"https://61ifxlzls9.execute-api.us-west-2.amazonaws.com/prod/read-survey",checked:"https://61ifxlzls9.execute-api.us-west-2.amazonaws.com/prod/tracing-checked",key:"CzOCMnaDoEqvZ5z7nGwn5bOlhAeyZMt8sYwP79d4"};

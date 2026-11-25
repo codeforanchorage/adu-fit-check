@@ -7,7 +7,7 @@
 import {area,inside,ptSeg,cen,rectPoly,clean,openRing,classifyEdges,sweep,f1,traceDiff} from "./geometry.js";
 import {sunPosition,zonedToUtc,todayIn,shadowOffset,compass} from "./sun.js";
 import {SURVEY_READER,EXAMPLE_ADDRESS} from "./config.js";
-import {DIST,TYPES,TNAME,L,check,margin,maxAduArea,autoTypes,typesFromEdges,typesFromTrace,normZone,flagResults} from "./rules.js";
+import {DIST,TYPES,TNAME,L,check,maxAduArea,autoTypes,typesFromEdges,normZone,flagResults,gridPts,sizeOk,findSpot,sceneFromTrace} from "./rules.js";
 
 const $=id=>document.getElementById(id);
 const cv=$("cv"),cx=cv.getContext("2d");
@@ -22,28 +22,13 @@ const blocked=()=>!!(S.unconfirmed||S.needRules);
 let loadSeq=0;   // goes up whenever a new lot or survey replaces the drawing, so late answers for the old one are dropped
 function ready(){return S.ftPerPx&&S.lotClosed&&S.lot.length>=3}
 
-// Points to try the ADU's centre at: a grid over the lot, at least minFt feet apart.
-function gridPts(minFt,about){const xs=S.lot.map(p=>p.x),ys=S.lot.map(p=>p.y),x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys);
-  const stepFt=Math.max(minFt||2,Math.sqrt(area(S.lot)*S.ftPerPx*S.ftPerPx/(about||5000))),st=stepFt/S.ftPerPx,pts=[];
-  for(let y=y0+st/2;y<y1;y+=st)for(let x=x0+st/2;x<x1;x+=st)if(inside({x,y},S.lot))pts.push({x,y});return {pts,st}}
-function globalOk(R){const g=check(S,aduPoly(S.adu.x,S.adu.y),R,false);return !g.rows.slice(-2).some(r=>!r.ok)}
 function buildMap(){
   S.mapDirty=false;S.map=null;if(!ready()||blocked())return;
-  const R=rules(),g=gridPts(),gl=globalOk(R);
+  const R=rules(),g=gridPts(S),gl=sizeOk(S,R);
   S.map={cells:g.pts.map(p=>({x:p.x,y:p.y,ok:gl&&check(S,aduPoly(p.x,p.y),R,true).ok})),st:g.st};
 }
-// Best position for the current footprint: the spot with the most room to spare.
-// It first tries a coarse grid at the current turn and a quarter turn from it. If nothing
-// fits it looks harder before saying so: a 1 ft grid, and the ADU turned to line up with the
-// longest lot line. A spot with less than about a foot to spare can still be missed, which is
-// why the page says "No room found" and not "does not fit".
-function bestSpot(){if(!ready()||blocked())return null;const R=rules();if(!globalOk(R))return null;const keep=S.adu.rot,n=S.lot.length;let best=null;
-  const scan=(g,rots)=>{for(const rot of rots){S.adu.rot=rot;for(const p of g.pts){const poly=aduPoly(p.x,p.y);if(!check(S,poly,R,true).ok)continue;const m=margin(S,poly,R);if(!best||m>best.m+(rot===keep?0:0.5))best={m,x:p.x,y:p.y,rot}}}};
-  const quarter=[keep,(keep+90)%180];scan(gridPts(),quarter);
-  if(!best){let li=0,ll=0;for(let i=0;i<n;i++){const a=S.lot[i],b=S.lot[(i+1)%n],l=Math.hypot(b.x-a.x,b.y-a.y);if(l>ll){ll=l;li=i}}
-    const a=S.lot[li],b=S.lot[(li+1)%n],e=((Math.round(Math.atan2(b.y-a.y,b.x-a.x)*180/Math.PI/5)*5)%180+180)%180;
-    scan(gridPts(1,8000),[...new Set(quarter.concat([e,(e+90)%180]))])}
-  S.adu.rot=keep;return best}
+// Best position for the current footprint: the spot with the most room to spare (rules.js findSpot).
+function bestSpot(){return !ready()||blocked()?null:findSpot(S,rules())}
 // The Municipality's pre-approved plans, from plans.json (loadPlans below). Empty until it
 // loads, and it stays empty if it cannot be read: "Custom size" still works without it.
 let PLANS=[];
@@ -109,6 +94,11 @@ function draw(){
     S.draft.forEach((p,i)=>{cx.beginPath();cx.arc(X(p),Y(p),i?4:6,0,7);cx.fillStyle=i?"#111":"#1f5fa8";cx.fill()})}
   S.scalePts.forEach(p=>{cx.beginPath();cx.arc(X(p),Y(p),6,0,7);cx.fillStyle="#b3261e";cx.fill()});
   if(S.scalePts.length===2){path(S.scalePts,false);cx.strokeStyle="#b3261e";cx.lineWidth=2;cx.stroke()}
+  // the keyboard's crosshair (see "tracing by keyboard"), with a line from the last point placed
+  if(S.cur&&S.mode!=="place"){const x=X(S.cur),y=Y(S.cur),from=S.draft.length?S.draft[S.draft.length-1]:S.mode==="scale"&&S.scalePts.length===1?S.scalePts[0]:null;
+    if(from){cx.beginPath();cx.moveTo(X(from),Y(from));cx.lineTo(x,y);cx.strokeStyle="#111";cx.lineWidth=1;cx.setLineDash([2,3]);cx.stroke();cx.setLineDash([])}
+    if(curOnFirst()){cx.beginPath();cx.arc(X(S.draft[0]),Y(S.draft[0]),12,0,7);cx.strokeStyle="#1f5fa8";cx.lineWidth=3;cx.stroke()}
+    [["#fff",5],["#111",2]].forEach(([c,lw])=>{cx.strokeStyle=c;cx.lineWidth=lw;cx.beginPath();cx.moveTo(x-16,y);cx.lineTo(x-4,y);cx.moveTo(x+4,y);cx.lineTo(x+16,y);cx.moveTo(x,y-16);cx.lineTo(x,y-4);cx.moveTo(x,y+4);cx.lineTo(x,y+16);cx.stroke()})}
   // distances to lot lines
   if(ready()&&S.mode==="place"&&S.result&&$("showDim").checked)S.result.rows.forEach(o=>{if(!o.seg||!isFinite(o.seg.d))return;const a=o.seg.p,b=o.seg.q,c=o.ok?"#0e5a35":"#b3261e";
     cx.beginPath();cx.moveTo(X(a),Y(a));cx.lineTo(X(b),Y(b));cx.strokeStyle=c;cx.lineWidth=o.ok?1.2:2.2;cx.setLineDash(o.ok?[5,4]:[]);cx.stroke();cx.setLineDash([]);
@@ -164,34 +154,72 @@ const GUIDE={
   bldg:"<b>Step 3.</b> Click the corners of each existing building. Click the first corner again to close each one.",
   nobuild:"<b>Step 4.</b> Pick a type, then click the corners of any area you cannot build on, such as an easement or septic field.",
   place:"<b>Step 5.</b> Drag the ADU around the lot, or click a spot to move it there. Arrow keys nudge it one foot."};
-function setMode(m){S.mode=m;S.draft=[];if(m!=="scale")S.scalePts=[];if(S.three&&m!=="place")show3d(false);if(m!=="place")$("tools").open=true;
+// Shown under each of steps 1 to 4. Step 5 says its own keys.
+const KEYS=" <b>By keyboard:</b> move to the drawing with Tab, then the arrow keys move a crosshair (hold Shift for small steps), Enter places a point and Backspace takes the last one back.";
+function setMode(m){S.mode=m;S.draft=[];S.cur=null;if(m!=="scale")S.scalePts=[];if(S.three&&m!=="place")show3d(false);if(m!=="place")$("tools").open=true;
   document.querySelectorAll("[data-mode]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.mode===m));
-  $("guide").innerHTML=GUIDE[m];$("scaleBox").classList.toggle("on",m==="scale"&&S.scalePts.length===2);
+  $("guide").innerHTML=GUIDE[m]+(m==="place"?"":KEYS+(m==="scale"?"":" Home jumps to the first corner, so Enter there closes the shape."));lineTypes();$("scaleBox").classList.toggle("on",m==="scale"&&S.scalePts.length===2);
   $("shapeBox").classList.toggle("on",m==="lot"||m==="bldg"||m==="nobuild");$("nbLabel").style.display=m==="nobuild"?"":"none";
   cv.style.cursor=m==="place"?"grab":"crosshair";layout();update();if(S.three&&v3)v3.resize()}
 function finish(){if(S.draft.length<3)return;const p=S.draft;S.draft=[];
   if(S.mode==="lot"){S.lot=p;S.lotClosed=true;S.types=autoTypes(S.lot);const c=cen(p);S.adu.x=c.x;S.adu.y=c.y}
   else if(S.mode==="bldg"){S.bldgs.push(p);S.bldgArea=null}else if(S.mode==="nobuild")S.nb.push({pts:p,label:$("nbLabel").value});
-  S.mapDirty=true;update()}
+  lineTypes();S.mapDirty=true;update()}
+// The lot lines as a list of pickers under the tools, so a line's label can be changed without a pointer.
+function lineTypes(){const box=$("lineTypes"),on=S.mode==="lot"&&S.lotClosed;box.classList.toggle("on",on);if(!on){box.textContent="";return}
+  if(box.children.length!==S.lot.length){box.textContent="";S.lot.forEach((_,i)=>{const lb=document.createElement("label"),s=document.createElement("select");lb.textContent="Line "+L(i)+" ";s.style.width="auto";
+    TYPES.forEach(t=>{const o=document.createElement("option");o.value=t;o.textContent=TNAME[t];s.appendChild(o)});
+    s.addEventListener("change",()=>{S.types[i]=s.value;S.mapDirty=true;update()});lb.appendChild(s);box.appendChild(lb)})}
+  [...box.querySelectorAll("select")].forEach((s,i)=>{s.value=S.types[i]||"side"})}
+// One click, or one press of Enter, at a point on the drawing in steps 1 to 4. Returns what happened, in words.
+function clickAt(p){const tol=12/S.v;
+  if(S.mode==="scale"){if(S.scalePts.length>=2)S.scalePts=[];S.scalePts.push(p);const two=S.scalePts.length===2;$("scaleBox").classList.toggle("on",two);if(two)$("scaleFt").focus();draw();
+    return two?"Second point placed. Type the distance between the two points in feet.":"First point placed."}
+  if(S.mode==="lot"&&S.lotClosed&&!S.draft.length){for(let i=0;i<S.lot.length;i++){const a=S.lot[i],b=S.lot[(i+1)%S.lot.length];
+      if(ptSeg(p,a,b)<tol){S.types[i]=TYPES[(TYPES.indexOf(S.types[i])+1)%4];lineTypes();S.mapDirty=true;update();return "Line "+L(i)+" is now "+TNAME[S.types[i]]+"."}}
+    return "The lot is already traced. To change a line's label, use the list under the tools. To trace the lot again, press Clear all of these."}
+  if(S.draft.length>=3&&Math.hypot(p.x-S.draft[0].x,p.y-S.draft[0].y)<tol){finish();return "Shape closed."}
+  S.draft.push(p);draw();return "Corner "+S.draft.length+" placed."}
 function toImg(e){const r=cv.getBoundingClientRect();return {x:(e.clientX-r.left-S.ox)/S.v,y:(e.clientY-r.top)/S.v}}
 let drag=null;
-cv.addEventListener("pointerdown",e=>{const p=toImg(e),tol=12/S.v;cv.focus({preventScroll:true});
-  if(S.mode==="scale"){if(S.scalePts.length>=2)S.scalePts=[];S.scalePts.push(p);$("scaleBox").classList.toggle("on",S.scalePts.length===2);if(S.scalePts.length===2)$("scaleFt").focus();draw();return}
+cv.addEventListener("pointerdown",e=>{const p=toImg(e);S.cur=null;cv.focus({preventScroll:true});
   if(S.mode==="place"){if(!ready())return;const poly=aduPoly(S.adu.x,S.adu.y);
     if(!inside(p,poly)){S.adu.x=p.x;S.adu.y=p.y}drag={dx:S.adu.x-p.x,dy:S.adu.y-p.y};cv.setPointerCapture(e.pointerId);cv.style.cursor="grabbing";update();return}
-  if(S.mode==="lot"&&S.lotClosed&&!S.draft.length){for(let i=0;i<S.lot.length;i++){const a=S.lot[i],b=S.lot[(i+1)%S.lot.length];
-      if(ptSeg(p,a,b)<tol){S.types[i]=TYPES[(TYPES.indexOf(S.types[i])+1)%4];S.mapDirty=true;update();return}}return}
-  if(S.draft.length>=3&&Math.hypot(p.x-S.draft[0].x,p.y-S.draft[0].y)<tol){finish();return}
-  S.draft.push(p);draw()});
+  clickAt(p)});
 cv.addEventListener("pointermove",e=>{if(!drag)return;const p=toImg(e);S.adu.x=p.x+drag.dx;S.adu.y=p.y+drag.dy;update()});
 const endDrag=()=>{if(drag){drag=null;cv.style.cursor="grab"}};
 cv.addEventListener("pointerup",endDrag);cv.addEventListener("pointercancel",endDrag);
-cv.addEventListener("keydown",e=>{if(S.mode!=="place"||!ready())return;const k={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]}[e.key];if(!k)return;e.preventDefault();
-  S.adu.x+=k[0]/S.ftPerPx;S.adu.y+=k[1]/S.ftPerPx;update()});
+/* ---------- tracing by keyboard ---------- */
+// Steps 1 to 4 without a pointer. With the drawing in focus the arrow keys move a crosshair
+// (S.cur, in image pixels): 10 screen pixels a press, or 1 with Shift held. Enter or Space
+// places a point there, exactly as a click would (clickAt). Backspace takes the last point
+// back. Home jumps to the first corner of the shape being drawn, so Enter there closes it;
+// "Finish shape" closes it too. What happened is said in #kbdMsg for screen readers.
+// In step 5 the arrow keys move the ADU one foot, as before.
+const say=t=>{$("kbdMsg").textContent=t};
+const curOnFirst=()=>!!S.cur&&S.draft.length>=3&&Math.hypot(S.cur.x-S.draft[0].x,S.cur.y-S.draft[0].y)<12/S.v;
+function curStart(){const d=S.draft.length?S.draft[S.draft.length-1]:S.scalePts.length===1?S.scalePts[0]:null;return d?{x:d.x,y:d.y}:{x:S.iw/2,y:S.ih/2}}
+function undo(){if(S.draft.length)S.draft.pop();else if(S.mode==="bldg"){S.bldgs.pop();S.bldgArea=null}else if(S.mode==="nobuild")S.nb.pop();S.mapDirty=true;update()}
+cv.addEventListener("keydown",e=>{const k={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]}[e.key];
+  if(S.mode==="place"){if(!ready()||!k)return;e.preventDefault();S.adu.x+=k[0]/S.ftPerPx;S.adu.y+=k[1]/S.ftPerPx;update();return}
+  if(e.ctrlKey||e.metaKey||e.altKey)return;
+  if(k){e.preventDefault();
+    if(!S.cur){S.cur=curStart();say("Crosshair shown. Arrow keys move it. Enter places a point.")}
+    else{const st=(e.shiftKey?1:10)/S.v;S.cur.x=Math.max(0,Math.min(S.iw,S.cur.x+k[0]*st));S.cur.y=Math.max(0,Math.min(S.ih,S.cur.y+k[1]*st));
+      if(curOnFirst())say("On the first corner. Enter closes the shape.")}
+    draw();return}
+  if(e.key==="Home"&&S.draft.length){e.preventDefault();S.cur={x:S.draft[0].x,y:S.draft[0].y};say(S.draft.length>=3?"On the first corner. Enter closes the shape.":"On the first corner. A shape needs at least three corners.");draw();return}
+  if(e.key==="Enter"||e.key===" "){e.preventDefault();
+    if(!S.cur){S.cur=curStart();say("Crosshair shown. Arrow keys move it. Enter places a point.");draw();return}
+    say(clickAt({x:S.cur.x,y:S.cur.y}));return}
+  if(e.key==="Backspace"||e.key==="Delete"){e.preventDefault();
+    if(S.mode==="scale"){if(S.scalePts.length){S.scalePts.pop();$("scaleBox").classList.remove("on");say("Point removed.");draw()}}
+    else if(S.draft.length){undo();say("Corner removed. "+S.draft.length+" left.")}
+    else say("No corner to remove. The Undo button removes the last finished building or no-build area.")}});
 document.querySelectorAll("[data-mode]").forEach(b=>b.addEventListener("click",()=>setMode(b.dataset.mode)));
 $("finish").addEventListener("click",finish);
-$("undo").addEventListener("click",()=>{if(S.draft.length)S.draft.pop();else if(S.mode==="bldg"){S.bldgs.pop();S.bldgArea=null}else if(S.mode==="nobuild")S.nb.pop();S.mapDirty=true;update()});
-$("clear").addEventListener("click",()=>{S.draft=[];if(S.mode==="lot"){S.lot=[];S.lotClosed=false;S.types=[]}else if(S.mode==="bldg"){S.bldgs=[];S.bldgArea=null}else S.nb=[];S.mapDirty=true;update()});
+$("undo").addEventListener("click",undo);
+$("clear").addEventListener("click",()=>{S.draft=[];if(S.mode==="lot"){S.lot=[];S.lotClosed=false;S.types=[]}else if(S.mode==="bldg"){S.bldgs=[];S.bldgArea=null}else S.nb=[];lineTypes();S.mapDirty=true;update()});
 $("scaleApply").addEventListener("click",()=>{const ft=parseFloat($("scaleFt").value);if(!(ft>0)||S.scalePts.length<2)return;
   const d=Math.hypot(S.scalePts[0].x-S.scalePts[1].x,S.scalePts[0].y-S.scalePts[1].y);if(d<2)return;S.ftPerPx=ft/d;S.mapDirty=true;
   // a looked-up lot came with its own scale. Once the scale is set by hand, the building areas, nearby buildings and
@@ -297,22 +325,13 @@ const aiOn=()=>!!SURVEY_READER.url;
 function showAi(){$("ai").hidden=!(aiOn()&&S.uploaded)}
 const AI_MAX_BYTES=1400000;   // the reader refuses more than 1.5 MB
 function applyAI(o){
-  const P=q=>({x:Math.max(0,Math.min(1000,+q[0]))*S.iw/1000,y:Math.max(0,Math.min(1000,+q[1]))*S.ih/1000}),poly=a=>Array.isArray(a)&&a.length>=3&&a.every(q=>Array.isArray(q)&&isFinite(q[0])&&isFinite(q[1]))?a.map(P):null;
-  const shapes=a=>(Array.isArray(a)?a:[]).filter(x=>x&&typeof x==="object");
-  // read the whole answer before changing anything, so a bad one leaves the drawing as it was
-  if(!o||typeof o!=="object")throw new Error("no answer");
-  const lot=poly(o.lot);if(!lot)throw new Error("no lot");
-  const bldgs=shapes(o.buildings).map(b=>poly(b.pts)).filter(Boolean),nb=shapes(o.no_build).map(z=>({pts:poly(z.pts),label:String(z.label||"No-build area").slice(0,40)})).filter(z=>z.pts);
+  // the whole answer is read before anything changes, so a bad one leaves the drawing as it was (rules.js sceneFromTrace)
+  const tr=sceneFromTrace(o,S.iw,S.ih),{lot,bldgs,nb}=tr,scaled=tr.ftPerPx!=null;
   // the gate goes down first: nothing below may show a result for a tracing nobody has checked
   S.unconfirmed=true;$("aiOk").hidden=false;
   S.lot=lot;S.lotClosed=true;S.draft=[];S.bldgs=bldgs;S.nb=nb;S.bldgArea=null;
-  // Every line on a street is a front lot line, so a corner lot gets a front setback on both streets:
-  // the same labelling an address lookup gets (rules.js typesFromEdges).
-  const tr=typesFromTrace(S.lot,o.street_edges,o.alley_edges,o.front_edge);S.types=tr.types;
-  const sc=o.scale;let scaled=false;if(sc&&Array.isArray(sc.p1)&&Array.isArray(sc.p2)&&sc.feet>0){const a=P(sc.p1),b=P(sc.p2),d=Math.hypot(a.x-b.x,a.y-b.y);if(d>5){S.ftPerPx=sc.feet/d;scaled=true}}
-  // surveys print the district in many ways ("R-6", "R6", "ZONING: R-6 (example)"): take the district out of it
-  const z=typeof o.zoning==="string"?normZone((o.zoning.toUpperCase().match(/[A-Z]+-?\d+[A-Z]?/)||[""])[0]):"";
-  if(DIST[z])setDistrict(z);
+  S.types=tr.types;if(scaled)S.ftPerPx=tr.ftPerPx;
+  if(tr.zone)setDistrict(tr.zone);
   // kept so the page can say what the person changed before accepting it (reportChecked)
   S.ai={lot:lot.slice(),bldgs:bldgs.slice(),nb:nb.map(q=>q.pts),types:S.types.slice(),ftPerPx:S.ftPerPx,dist:$("dist").value};
   const c=cen(lot);S.adu.x=c.x;S.adu.y=c.y;S.mapDirty=true;

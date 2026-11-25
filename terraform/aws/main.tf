@@ -1,11 +1,12 @@
 # The survey reader for ADU Fit Check (Phase 4): one Lambda behind a REST API.
 # Laid out like the Code for Anchorage MCP fleet (Terraform, own state, us-west-2,
 # reserved concurrency, stage throttle, four alarms, 30 day access logs), with
-# three differences, each for a reason:
+# four differences, each for a reason:
 #   - Tag Project = adu-fit-check, not mcp-server. This is not an MCP server, and
 #     the fleet's dashboard, probe and 4xx alarms key on that tag.
 #   - Not behind the shared fleet firewall, which blocks request bodies over 8 KB.
 #     A survey image is several hundred KB.
+#   - Lambda logs are kept 90 days, not 14 (see the log group below).
 #   - The route needs an API Gateway key. The key is public (it is in the page);
 #     its only job is to attach the usage plan's daily quota, which limits how
 #     many paid model calls can be made in a day. AWS applies usage plan quotas
